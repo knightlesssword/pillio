@@ -1,66 +1,85 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { AuthContext } from './auth-context';
 import { User, LoginForm, RegisterForm } from '@/types';
-import api from '@/lib/api';
+import { toUser, type ApiUser } from '@/types';
+import authApi from '@/lib/auth-api';
+import { getErrorMessage } from '@/lib/api';
 
-interface AuthContextType {
-  user: User | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  login: (data: LoginForm) => Promise<void>;
-  register: (data: RegisterForm) => Promise<void>;
-  logout: () => void;
-  forgotPassword: (email: string) => Promise<void>;
-  resetPassword: (token: string, password: string) => Promise<void>;
-  updateProfile: (data: Partial<User>) => Promise<void>;
+// eslint-disable-next-line react-refresh/only-export-components
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 }
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Refresh user data from API
+  const refreshUser = useCallback(async () => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const response = await authApi.getMe();
+      const userData = toUser(response.data);
+      setUser(userData);
+      localStorage.setItem('user', JSON.stringify(userData));
+    } catch (error) {
+      console.error('Failed to refresh user:', error);
+      // Token might be invalid, clear auth data
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('user');
+      setUser(null);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Check for existing auth token on mount
   useEffect(() => {
-    // Check for existing auth token and validate
     const checkAuth = async () => {
       const token = localStorage.getItem('auth_token');
       if (token) {
-        try {
-          // In a real app, this would validate the token with the backend
-          const savedUser = localStorage.getItem('user');
-          if (savedUser) {
-            setUser(JSON.parse(savedUser));
-          }
-        } catch (error) {
-          console.error('Auth check failed:', error);
-          localStorage.removeItem('auth_token');
-          localStorage.removeItem('user');
-        }
+        await refreshUser();
+      } else {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     };
 
     checkAuth();
-  }, []);
+  }, [refreshUser]);
 
   const login = async (data: LoginForm) => {
     setIsLoading(true);
     try {
-      // Mock login for demo - replace with actual API call
-      // const response = await api.post('/auth/login', data);
-      const mockUser: User = {
-        id: '1',
+      const response = await authApi.login({
         email: data.email,
-        name: 'John Doe',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+        password: data.password,
+      });
+
+      const { access_token, refresh_token } = response.data;
       
-      setUser(mockUser);
-      localStorage.setItem('user', JSON.stringify(mockUser));
-      api.setToken('mock_token_' + Date.now());
+      // Store tokens
+      localStorage.setItem('auth_token', access_token);
+      localStorage.setItem('refresh_token', refresh_token);
+
+      // Fetch user profile
+      const userResponse = await authApi.getMe();
+      const userData = toUser(userResponse.data);
+      
+      setUser(userData);
+      localStorage.setItem('user', JSON.stringify(userData));
     } catch (error) {
-      throw error;
+      const message = getErrorMessage(error);
+      throw new Error(message);
     } finally {
       setIsLoading(false);
     }
@@ -69,49 +88,95 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (data: RegisterForm) => {
     setIsLoading(true);
     try {
-      // Mock registration for demo
-      const mockUser: User = {
-        id: '1',
+      const response = await authApi.register({
         email: data.email,
-        name: data.name,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+        password: data.password,
+        first_name: data.name.split(' ')[0] || undefined,
+        last_name: data.name.split(' ').slice(1).join(' ') || undefined,
+      });
+
+      const { access_token, refresh_token } = response.data;
       
-      setUser(mockUser);
-      localStorage.setItem('user', JSON.stringify(mockUser));
-      api.setToken('mock_token_' + Date.now());
+      // Store tokens
+      localStorage.setItem('auth_token', access_token);
+      localStorage.setItem('refresh_token', refresh_token);
+
+      // Fetch user profile
+      const userResponse = await authApi.getMe();
+      const userData = toUser(userResponse.data);
+      
+      setUser(userData);
+      localStorage.setItem('user', JSON.stringify(userData));
     } catch (error) {
-      throw error;
+      const message = getErrorMessage(error);
+      throw new Error(message);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('user');
-    api.setToken(null);
+  const logout = async () => {
+    try {
+      await authApi.logout();
+    } catch (error) {
+      // Ignore logout errors - we still want to clear local state
+      console.error('Logout error:', error);
+    } finally {
+      setUser(null);
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('user');
+    }
   };
 
   const forgotPassword = async (email: string) => {
-    // Mock forgot password
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    console.log('Password reset email sent to:', email);
+    try {
+      await authApi.forgotPassword({ email });
+    } catch (error) {
+      const message = getErrorMessage(error);
+      throw new Error(message);
+    }
   };
 
   const resetPassword = async (token: string, password: string) => {
-    // Mock reset password
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    console.log('Password reset with token:', token);
+    try {
+      await authApi.resetPassword({
+        token,
+        new_password: password,
+      });
+    } catch (error) {
+      const message = getErrorMessage(error);
+      throw new Error(message);
+    }
   };
 
   const updateProfile = async (data: Partial<User>) => {
     if (!user) return;
-    
-    const updatedUser = { ...user, ...data, updatedAt: new Date().toISOString() };
-    setUser(updatedUser);
-    localStorage.setItem('user', JSON.stringify(updatedUser));
+
+    try {
+      const updateData: Record<string, unknown> = {};
+      
+      if (data.name) {
+        const nameParts = data.name.split(' ');
+        updateData.first_name = nameParts[0];
+        updateData.last_name = nameParts.slice(1).join(' ') || null;
+      }
+      if (data.email) {
+        updateData.email = data.email;
+      }
+      if (data.phone) {
+        updateData.phone = data.phone;
+      }
+
+      const response = await authApi.updateProfile(updateData);
+      const updatedUser = toUser(response.data);
+      
+      setUser(updatedUser);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+    } catch (error) {
+      const message = getErrorMessage(error);
+      throw new Error(message);
+    }
   };
 
   return (
@@ -126,17 +191,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         forgotPassword,
         resetPassword,
         updateProfile,
+        refreshUser,
       }}
     >
       {children}
     </AuthContext.Provider>
   );
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 }

@@ -9,6 +9,34 @@ export interface User {
   updatedAt: string;
 }
 
+// API-specific User type (matches backend response)
+export interface ApiUser {
+  id: number;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  date_of_birth: string | null;
+  is_active: boolean;
+  is_superuser: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Convert API user to frontend user
+export function toUser(apiUser: ApiUser): User {
+  return {
+    id: String(apiUser.id),
+    email: apiUser.email,
+    name: [apiUser.first_name, apiUser.last_name]
+      .filter(Boolean)
+      .join(' ') || apiUser.email.split('@')[0],
+    phone: apiUser.phone || undefined,
+    createdAt: apiUser.created_at,
+    updatedAt: apiUser.updated_at,
+  };
+}
+
 // Medicine types
 export interface Medicine {
   id: string;

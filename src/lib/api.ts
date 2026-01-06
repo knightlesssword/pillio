@@ -1,146 +1,78 @@
-// API Client wrapper for FastAPI backend
+// API Client wrapper using Axios for FastAPI backend
+import axios, { AxiosError, type AxiosRequestConfig } from 'axios';
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
-interface RequestConfig extends RequestInit {
-  params?: Record<string, string | number | boolean>;
-}
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
 
-interface ApiResponse<T> {
-  data: T;
-  message?: string;
-  status: number;
-}
-
-class ApiClient {
-  private baseUrl: string;
-  private token: string | null = null;
-
-  constructor(baseUrl: string) {
-    this.baseUrl = baseUrl;
-    this.token = localStorage.getItem('auth_token');
-  }
-
-  setToken(token: string | null) {
-    this.token = token;
+// Request interceptor to add auth token
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('auth_token');
     if (token) {
-      localStorage.setItem('auth_token', token);
-    } else {
-      localStorage.removeItem('auth_token');
+      config.headers.Authorization = `Bearer ${token}`;
     }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
   }
+);
 
-  private getHeaders(): HeadersInit {
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
+// Response interceptor for error handling and token refresh
+api.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
 
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
-    }
+    // Handle 401 Unauthorized - try to refresh token
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
 
-    return headers;
-  }
+      const refreshToken = localStorage.getItem('refresh_token');
+      if (refreshToken) {
+        try {
+          const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
+            refresh_token: refreshToken,
+          });
 
-  private buildUrl(endpoint: string, params?: Record<string, string | number | boolean>): string {
-    const url = new URL(`${this.baseUrl}${endpoint}`);
-    
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        url.searchParams.append(key, String(value));
-      });
-    }
+          const { access_token, refresh_token } = response.data;
+          localStorage.setItem('auth_token', access_token);
+          localStorage.setItem('refresh_token', refresh_token);
 
-    return url.toString();
-  }
-
-  async request<T>(endpoint: string, config: RequestConfig = {}): Promise<ApiResponse<T>> {
-    const { params, ...fetchConfig } = config;
-    const url = this.buildUrl(endpoint, params);
-
-    try {
-      const response = await fetch(url, {
-        ...fetchConfig,
-        headers: {
-          ...this.getHeaders(),
-          ...fetchConfig.headers,
-        },
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'An error occurred');
+          if (originalRequest.headers) {
+            originalRequest.headers.Authorization = `Bearer ${access_token}`;
+          }
+          return api(originalRequest);
+        } catch (refreshError) {
+          // Refresh failed - clear tokens and redirect to login
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('refresh_token');
+          localStorage.removeItem('user');
+          window.location.href = '/login';
+          return Promise.reject(refreshError);
+        }
       }
-
-      return {
-        data,
-        status: response.status,
-      };
-    } catch (error) {
-      console.error('API Error:', error);
-      throw error;
-    }
-  }
-
-  async get<T>(endpoint: string, params?: Record<string, string | number | boolean>): Promise<T> {
-    const response = await this.request<T>(endpoint, { method: 'GET', params });
-    return response.data;
-  }
-
-  async post<T>(endpoint: string, body?: unknown): Promise<T> {
-    const response = await this.request<T>(endpoint, {
-      method: 'POST',
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    return response.data;
-  }
-
-  async put<T>(endpoint: string, body?: unknown): Promise<T> {
-    const response = await this.request<T>(endpoint, {
-      method: 'PUT',
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    return response.data;
-  }
-
-  async patch<T>(endpoint: string, body?: unknown): Promise<T> {
-    const response = await this.request<T>(endpoint, {
-      method: 'PATCH',
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    return response.data;
-  }
-
-  async delete<T>(endpoint: string): Promise<T> {
-    const response = await this.request<T>(endpoint, { method: 'DELETE' });
-    return response.data;
-  }
-
-  async uploadFile<T>(endpoint: string, file: File, fieldName: string = 'file'): Promise<T> {
-    const formData = new FormData();
-    formData.append(fieldName, file);
-
-    const headers: HeadersInit = {};
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
     }
 
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      method: 'POST',
-      headers,
-      body: formData,
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.message || 'Upload failed');
-    }
-
-    return data;
+    return Promise.reject(error);
   }
-}
+);
 
-export const api = new ApiClient(API_BASE_URL);
+// Helper to get error message
+export const getErrorMessage = (error: unknown): string => {
+  if (axios.isAxiosError(error)) {
+    return (error.response?.data as { detail?: string })?.detail || error.message || 'An error occurred';
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return 'An unknown error occurred';
+};
 
 export default api;
