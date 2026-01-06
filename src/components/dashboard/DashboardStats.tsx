@@ -1,8 +1,12 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Pill, Clock, CheckCircle, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
+import { Pill, Clock, CheckCircle, AlertTriangle, TrendingUp, TrendingDown, Loader2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { fetchUserStats, type UserStatsResponse } from '@/lib/users-api';
+import { DashboardStats as DashboardStatsType } from '@/types';
+import { useToast } from '@/hooks/use-toast';
+import { getErrorMessage } from '@/lib/api';
 
 interface StatCardProps {
   title: string;
@@ -63,39 +67,82 @@ function StatCard({ title, value, change, changeLabel, icon, variant = 'default'
 }
 
 export default function DashboardStats() {
-  // Mock data - would come from API
-  const stats = [
+  const [stats, setStats] = useState<DashboardStatsType | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await fetchUserStats();
+        setStats(response);
+      } catch (err) {
+        const message = getErrorMessage(err);
+        setError(message);
+        toast({
+          title: 'Error fetching stats',
+          description: message,
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, [toast]);
+
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[1, 2, 3, 4].map((i) => (
+          <Card key={i} className="animate-pulse">
+            <CardContent className="p-6">
+              <div className="h-4 bg-muted rounded w-1/2 mb-4"></div>
+              <div className="h-8 bg-muted rounded w-3/4"></div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
+  if (error || !stats) {
+    return null;
+  }
+
+  const statCards = [
     {
       title: 'Total Medicines',
-      value: 12,
+      value: stats.totalMedicines,
       icon: <Pill className="h-6 w-6" />,
       variant: 'primary' as const,
     },
     {
       title: "Today's Reminders",
-      value: 8,
+      value: stats.todayReminders,
       icon: <Clock className="h-6 w-6" />,
       variant: 'default' as const,
     },
     {
       title: 'Completed Today',
-      value: '6/8',
-      change: 15,
-      changeLabel: 'vs yesterday',
+      value: `${stats.completedToday}/${stats.todayReminders}`,
       icon: <CheckCircle className="h-6 w-6" />,
       variant: 'success' as const,
     },
     {
       title: 'Low Stock Items',
-      value: 3,
+      value: stats.lowStockCount,
       icon: <AlertTriangle className="h-6 w-6" />,
-      variant: 'warning' as const,
+      variant: stats.lowStockCount > 0 ? 'warning' as const : 'default' as const,
     },
   ];
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      {stats.map((stat, index) => (
+      {statCards.map((stat, index) => (
         <motion.div
           key={stat.title}
           initial={{ opacity: 0, y: 20 }}

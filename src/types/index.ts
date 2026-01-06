@@ -42,7 +42,7 @@ export interface Medicine {
   id: string;
   name: string;
   genericName?: string;
-  category: string;
+  category: string; // Maps to backend 'form'
   dosage: string;
   unit: string;
   description?: string;
@@ -55,6 +55,39 @@ export interface Medicine {
   imageUrl?: string;
   createdAt: string;
   updatedAt: string;
+  isLowStock?: boolean;
+}
+
+// API-specific Medicine type (matches backend response)
+export interface ApiMedicine {
+  id: number;
+  user_id: number;
+  name: string;
+  generic_name: string | null;
+  dosage: string;
+  form: string;
+  unit: string;
+  current_stock: number;
+  min_stock_alert: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Convert API medicine to frontend medicine
+export function toMedicine(apiMedicine: ApiMedicine): Medicine {
+  return {
+    id: String(apiMedicine.id),
+    name: apiMedicine.name,
+    genericName: apiMedicine.generic_name || undefined,
+    category: apiMedicine.form,
+    dosage: apiMedicine.dosage,
+    unit: apiMedicine.unit,
+    currentStock: apiMedicine.current_stock,
+    minimumStock: apiMedicine.min_stock_alert,
+    createdAt: apiMedicine.created_at,
+    updatedAt: apiMedicine.updated_at,
+  };
 }
 
 // Reminder types
@@ -124,6 +157,40 @@ export interface InventoryAdjustment {
   createdAt: string;
 }
 
+// API-specific InventoryHistory type
+export interface ApiInventoryHistory {
+  id: number;
+  medicine_id: number;
+  change_type: string;
+  quantity: number;
+  previous_stock: number;
+  new_stock: number;
+  reason?: string;
+  notes?: string;
+  created_at: string;
+}
+
+// Convert API inventory history to frontend
+export function toInventoryAdjustment(apiHistory: ApiInventoryHistory): InventoryAdjustment {
+  const typeMap: Record<string, 'add' | 'remove' | 'adjust'> = {
+    added: 'add',
+    consumed: 'remove',
+    adjusted: 'adjust',
+    expired: 'remove',
+  };
+
+  return {
+    id: String(apiHistory.id),
+    medicineId: String(apiHistory.medicine_id),
+    type: typeMap[apiHistory.change_type] || 'adjust',
+    quantity: apiHistory.quantity,
+    previousStock: apiHistory.previous_stock,
+    newStock: apiHistory.new_stock,
+    reason: apiHistory.reason || undefined,
+    createdAt: apiHistory.created_at,
+  };
+}
+
 // Notification types
 export interface Notification {
   id: string;
@@ -144,6 +211,28 @@ export interface DashboardStats {
   adherenceRate: number;
   upcomingReminders: Reminder[];
   lowStockMedicines: Medicine[];
+}
+
+// API-specific DashboardStats type
+export interface ApiDashboardStats {
+  total_medicines: number;
+  today_reminders: number;
+  completed_today: number;
+  low_stock_count: number;
+  adherence_rate: number;
+}
+
+// Convert API stats to frontend
+export function toDashboardStats(apiStats: ApiDashboardStats): DashboardStats {
+  return {
+    totalMedicines: apiStats.total_medicines,
+    todayReminders: apiStats.today_reminders,
+    completedToday: apiStats.completed_today,
+    lowStockCount: apiStats.low_stock_count,
+    adherenceRate: apiStats.adherence_rate,
+    upcomingReminders: [],
+    lowStockMedicines: [],
+  };
 }
 
 // Report types
