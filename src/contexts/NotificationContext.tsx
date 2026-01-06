@@ -1,18 +1,7 @@
-import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import React, { useContext, useState, ReactNode, useCallback } from 'react';
+import { NotificationContext, type NotificationContextType } from './notification-context';
 import { Notification } from '@/types';
 import { generateId } from '@/lib/utils';
-
-interface NotificationContextType {
-  notifications: Notification[];
-  unreadCount: number;
-  addNotification: (notification: Omit<Notification, 'id' | 'createdAt' | 'isRead'>) => void;
-  markAsRead: (id: string) => void;
-  markAllAsRead: () => void;
-  removeNotification: (id: string) => void;
-  clearAll: () => void;
-}
-
-const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 // Mock initial notifications for demo
 const mockNotifications: Notification[] = [
@@ -43,6 +32,15 @@ const mockNotifications: Notification[] = [
     createdAt: new Date(Date.now() - 86400000).toISOString(),
   },
 ];
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function useNotifications(): NotificationContextType {
+  const context = useContext(NotificationContext);
+  if (context === undefined) {
+    throw new Error('useNotifications must be used within a NotificationProvider');
+  }
+  return context;
+}
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
@@ -92,12 +90,4 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       {children}
     </NotificationContext.Provider>
   );
-}
-
-export function useNotifications() {
-  const context = useContext(NotificationContext);
-  if (context === undefined) {
-    throw new Error('useNotifications must be used within a NotificationProvider');
-  }
-  return context;
 }
