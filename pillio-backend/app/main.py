@@ -1,8 +1,9 @@
-from fastapi import FastAPI, Depends, status
+from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import uvicorn
+import logging
 from app.config import settings
 from app.database import create_db_and_tables
 from app.api.auth import router as auth_router
@@ -13,25 +14,34 @@ from app.core.exceptions import (
     NotFoundException, ConflictException, BadRequestException
 )
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
     # Startup
-    print("Starting Pillio API...")
+    logger.info("Starting Pillio API...")
     
-    # Create database tables
-    await create_db_and_tables()
-    print("Database tables created successfully")
-    
-    # Ensure upload directory exists
-    settings.ensure_upload_dir_exists()
-    print("Upload directory ready")
+    try:
+        # Create database tables
+        await create_db_and_tables()
+        logger.info("Database tables created successfully")
+        
+        # Ensure upload directory exists
+        settings.ensure_upload_dir_exists()
+        logger.info("Upload directory ready")
+        
+        logger.info(f"Pillio API started successfully on {settings.host}:{settings.port}")
+        
+    except Exception as e:
+        logger.error(f"Failed to start Pillio API: {e}")
+        raise
     
     yield
     
     # Shutdown
-    print("Shutting down Pillio Health Hub API...")
+    logger.info("Shutting down Pillio API...")
 
 
 # Create FastAPI application
@@ -57,6 +67,7 @@ app.add_middleware(
 # Exception handlers
 @app.exception_handler(AuthException)
 async def auth_exception_handler(request, exc: AuthException):
+    logger.warning(f"Auth exception: {exc.detail}")
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": exc.detail}
@@ -65,6 +76,7 @@ async def auth_exception_handler(request, exc: AuthException):
 
 @app.exception_handler(PermissionException)
 async def permission_exception_handler(request, exc: PermissionException):
+    logger.warning(f"Permission exception: {exc.detail}")
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": exc.detail}
@@ -73,6 +85,7 @@ async def permission_exception_handler(request, exc: PermissionException):
 
 @app.exception_handler(ValidationException)
 async def validation_exception_handler(request, exc: ValidationException):
+    logger.warning(f"Validation exception: {exc.detail}")
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": exc.detail}
@@ -81,6 +94,7 @@ async def validation_exception_handler(request, exc: ValidationException):
 
 @app.exception_handler(NotFoundException)
 async def not_found_exception_handler(request, exc: NotFoundException):
+    logger.warning(f"Not found exception: {exc.detail}")
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": exc.detail}
@@ -89,6 +103,7 @@ async def not_found_exception_handler(request, exc: NotFoundException):
 
 @app.exception_handler(ConflictException)
 async def conflict_exception_handler(request, exc: ConflictException):
+    logger.warning(f"Conflict exception: {exc.detail}")
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": exc.detail}
@@ -97,6 +112,7 @@ async def conflict_exception_handler(request, exc: ConflictException):
 
 @app.exception_handler(BadRequestException)
 async def bad_request_exception_handler(request, exc: BadRequestException):
+    logger.warning(f"Bad request exception: {exc.detail}")
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": exc.detail}
@@ -149,6 +165,7 @@ async def root():
 # Global exception handler for unexpected errors
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc: Exception):
+    logger.error(f"Unexpected error: {type(exc).__name__}: {str(exc)}", exc_info=True)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "Internal server error"}

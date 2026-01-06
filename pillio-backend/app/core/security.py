@@ -1,13 +1,14 @@
-from typing import Generator, Optional
+from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
+import logging
 from app.database import get_db
 from app.services.auth_service import AuthService
 from app.models.user import User
-from app.schemas.common import TokenData
 from app.utils.jwt import verify_access_token
 
+logger = logging.getLogger(__name__)
 
 # Security scheme for JWT tokens
 security = HTTPBearer()
@@ -40,6 +41,7 @@ async def get_current_user(
         # Verify token
         token_data = verify_access_token(credentials.credentials)
         if token_data is None:
+            logger.warning("Token verification failed: invalid token")
             raise credentials_exception
         
         # Get user from database
@@ -47,17 +49,23 @@ async def get_current_user(
         user = await auth_service.get_user_by_id(token_data.user_id)
         
         if user is None:
+            logger.warning(f"User not found for token (user_id: {token_data.user_id})")
             raise credentials_exception
         
         if not user.is_active:
+            logger.warning(f"Inactive user attempted access: {user.email}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Inactive user"
             )
         
+        logger.info(f"User authenticated successfully: {user.email}")
         return user
         
-    except Exception:
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during authentication: {e}")
         raise credentials_exception
 
 
@@ -90,10 +98,13 @@ async def get_current_superuser(
         HTTPException: If user is not a superuser
     """
     if not current_user.is_superuser:
+        logger.warning(f"Non-superuser attempted admin action: {current_user.email}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
         )
+    
+    logger.info(f"Superuser access granted: {current_user.email}")
     return current_user
 
 
@@ -116,8 +127,12 @@ async def get_optional_current_user(
     
     try:
         auth_service = AuthService(db)
-        return await auth_service.verify_token(credentials.credentials)
-    except Exception:
+        user = await auth_service.verify_token(credentials.credentials)
+        if user:
+            logger.debug(f"Optional user authenticated: {user.email}")
+        return user
+    except Exception as e:
+        logger.error(f"Error during optional user authentication: {e}")
         return None
 
 
@@ -131,19 +146,26 @@ def create_access_token_for_user(user: User) -> str:
     Returns:
         JWT access token
     """
-    from datetime import timedelta
-    from app.utils.jwt import create_access_token
-    from app.config import settings
-    
-    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
-    
-    token_data = {
-        "sub": user.email,
-        "user_id": user.id,
-        "type": "access"
-    }
-    
-    return create_access_token(token_data, access_token_expires)
+    try:
+        from datetime import timedelta
+        from app.utils.jwt import create_access_token
+        from app.config import settings
+        
+        access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+        
+        token_data = {
+            "sub": user.email,
+            "user_id": user.id,
+            "type": "access"
+        }
+        
+        token = create_access_token(token_data, access_token_expires)
+        logger.debug(f"Access token created for user: {user.email}")
+        return token
+        
+    except Exception as e:
+        logger.error(f"Failed to create access token for user {user.email}: {e}")
+        raise
 
 
 def create_refresh_token_for_user(user: User) -> str:
@@ -156,15 +178,22 @@ def create_refresh_token_for_user(user: User) -> str:
     Returns:
         JWT refresh token
     """
-    from app.utils.jwt import create_refresh_token
-    
-    token_data = {
-        "sub": user.email,
-        "user_id": user.id,
-        "type": "refresh"
-    }
-    
-    return create_refresh_token(token_data)
+    try:
+        from app.utils.jwt import create_refresh_token
+        
+        token_data = {
+            "sub": user.email,
+            "user_id": user.id,
+            "type": "refresh"
+        }
+        
+        token = create_refresh_token(token_data)
+        logger.debug(f"Refresh token created for user: {user.email}")
+        return token
+        
+    except Exception as e:
+        logger.error(f"Failed to create refresh token for user {user.email}: {e}")
+        raise
 
 
 class TokenData:

@@ -1,6 +1,9 @@
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError, InvalidHash
+from argon2.exceptions import VerifyMismatchError, InvalidHash, HashingError, InvalidHash
 import secrets
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Password hashing using Argon2
 ph = PasswordHasher()
@@ -10,14 +13,28 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plain password against its hash"""
     try:
         ph.verify(hashed_password, plain_password)
+        logger.debug("Password verified successfully")
         return True
-    except (VerifyMismatchError, InvalidHash):
+    except (VerifyMismatchError, InvalidHash) as e:
+        logger.warning("Password verification failed: invalid hash or mismatch")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error during password verification: {e}")
         return False
 
 
 def get_password_hash(password: str) -> str:
     """Hash a password for storing"""
-    return ph.hash(password)
+    try:
+        hashed = ph.hash(password)
+        logger.debug("Password hashed successfully")
+        return hashed
+    except HashingError as e:
+        logger.error(f"Failed to hash password: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error hashing password: {e}")
+        raise
 
 
 def create_password_reset_token(email: str) -> str:
@@ -26,10 +43,20 @@ def create_password_reset_token(email: str) -> str:
     from datetime import datetime, timedelta
     from app.config import settings
     
-    expire = datetime.utcnow() + timedelta(hours=24)  # Token expires in 24 hours
-    to_encode = {"exp": expire, "sub": email, "type": "password_reset"}
-    encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
-    return encoded_jwt
+    try:
+        expire = datetime.utcnow() + timedelta(hours=24)  # Token expires in 24 hours
+        to_encode = {"exp": expire, "sub": email, "type": "password_reset"}
+        encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
+        
+        logger.debug(f"Password reset token created for email: {email}")
+        return encoded_jwt
+        
+    except JWTError as e:
+        logger.error(f"Failed to create password reset token: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error creating password reset token: {e}")
+        raise
 
 
 def verify_password_reset_token(token: str) -> str | None:
@@ -43,10 +70,18 @@ def verify_password_reset_token(token: str) -> str | None:
         token_type: str = decoded_token.get("type")
         
         if email and token_type == "password_reset":
+            logger.debug(f"Password reset token verified for email: {email}")
             return email
-    except JWTError:
+            
+        logger.warning("Password reset token verification failed: invalid token type")
         return None
-    return None
+        
+    except JWTError as e:
+        logger.warning(f"Password reset token verification failed: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error verifying password reset token: {e}")
+        return None
 
 
 def validate_password_strength(password: str) -> tuple[bool, list[str]]:
@@ -75,9 +110,21 @@ def validate_password_strength(password: str) -> tuple[bool, list[str]]:
         errors.append("Password must contain at least one special character")
     
     is_valid = len(errors) == 0
+    
+    if not is_valid:
+        logger.warning(f"Password validation failed with {len(errors)} errors")
+    else:
+        logger.debug("Password validation passed")
+    
     return is_valid, errors
 
 
 def generate_secure_token(length: int = 32) -> str:
     """Generate a cryptographically secure random token"""
-    return secrets.token_urlsafe(length)
+    try:
+        token = secrets.token_urlsafe(length)
+        logger.debug(f"Generated secure token of length {length}")
+        return token
+    except Exception as e:
+        logger.error(f"Failed to generate secure token: {e}")
+        raise

@@ -1,6 +1,5 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List, Generic, TypeVar
-from datetime import datetime
 from enum import Enum
 
 T = TypeVar('T')

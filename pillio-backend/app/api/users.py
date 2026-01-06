@@ -1,13 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from datetime import date, timedelta
+import logging
 from app.database import get_db
 from app.core.security import get_current_user, get_current_superuser
 from app.api.deps import get_auth_service_dep
 from app.services.auth_service import AuthService
 from app.models.user import User
+from app.models.medicine import Medicine
+from app.models.reminder import Reminder
+from app.models.reminder_log import ReminderLog
 from app.schemas.user import User as UserSchema, UserUpdate
 from app.schemas.common import MessageResponse, PaginatedResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -43,6 +50,7 @@ async def update_user_profile(
         if user_update.email and user_update.email != current_user.email:
             existing_user = await auth_service.get_user_by_email(user_update.email)
             if existing_user:
+                logger.warning(f"Profile update failed: Email {user_update.email} already in use")
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Email already in use"
@@ -55,17 +63,20 @@ async def update_user_profile(
         )
         
         if not updated_user:
+            logger.warning(f"Profile update failed: User {current_user.id} not found")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
             )
         
+        logger.info(f"Profile updated for user: {updated_user.email}")
         return updated_user
     
     except HTTPException:
         raise
     
     except Exception as e:
+        logger.error(f"Profile update error for user {current_user.id}: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Profile update failed"
@@ -91,11 +102,13 @@ async def delete_user_account(
         success = await auth_service.deactivate_user(current_user.id)
         
         if not success:
+            logger.warning(f"Account deletion failed: User {current_user.id} not found")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
             )
         
+        logger.info(f"Account deactivated for user: {current_user.email}")
         return MessageResponse(
             message="Account deactivated successfully",
             success=True
@@ -105,6 +118,7 @@ async def delete_user_account(
         raise
     
     except Exception as e:
+        logger.error(f"Account deletion error for user {current_user.id}: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Account deletion failed"
@@ -120,12 +134,6 @@ async def get_user_stats(
     Get user statistics for dashboard
     """
     try:
-        from sqlalchemy import select, func
-        from app.models.medicine import Medicine
-        from app.models.reminder import Reminder
-        from app.models.reminder_log import ReminderLog
-        from datetime import date, timedelta
-        
         # Get total medicines count
         medicines_count = await db.scalar(
             select(func.count(Medicine.id)).where(Medicine.user_id == current_user.id)
@@ -184,15 +192,19 @@ async def get_user_stats(
         
         adherence_rate = (completed_reminders / total_reminders * 100) if total_reminders > 0 else 0
         
-        return {
+        stats = {
             "total_medicines": medicines_count,
             "today_reminders": today_reminders_count,
             "completed_today": completed_today_count,
             "low_stock_count": low_stock_count,
             "adherence_rate": round(adherence_rate, 2)
         }
+        
+        logger.debug(f"User stats fetched for {current_user.email}: {stats}")
+        return stats
     
     except Exception as e:
+        logger.error(f"Error fetching user stats for {current_user.id}: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch user statistics"
@@ -229,6 +241,7 @@ async def get_all_users(
         )
         users = result.scalars().all()
         
+        logger.debug(f"Admin {current_user.email} fetched {len(users)} users (page {page})")
         return PaginatedResponse(
             items=users,
             total=total_count,
@@ -238,6 +251,7 @@ async def get_all_users(
         )
     
     except Exception as e:
+        logger.error(f"Error fetching all users: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch users"
@@ -258,17 +272,20 @@ async def get_user_by_id(
         user = result.scalar_one_or_none()
         
         if not user:
+            logger.warning(f"Admin {current_user.email} tried to fetch non-existent user {user_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
             )
         
+        logger.debug(f"Admin {current_user.email} fetched user {user_id}")
         return user
     
     except HTTPException:
         raise
     
     except Exception as e:
+        logger.error(f"Error fetching user {user_id}: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch user"
@@ -289,11 +306,13 @@ async def activate_user(
         success = await auth_service.activate_user(user_id)
         
         if not success:
+            logger.warning(f"Admin {current_user.email} tried to activate non-existent user {user_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
             )
         
+        logger.info(f"Admin {current_user.email} activated user {user_id}")
         return MessageResponse(
             message="User activated successfully",
             success=True
@@ -303,6 +322,7 @@ async def activate_user(
         raise
     
     except Exception as e:
+        logger.error(f"Error activating user {user_id}: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to activate user"
@@ -323,11 +343,13 @@ async def deactivate_user(
         success = await auth_service.deactivate_user(user_id)
         
         if not success:
+            logger.warning(f"Admin {current_user.email} tried to deactivate non-existent user {user_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
             )
         
+        logger.info(f"Admin {current_user.email} deactivated user {user_id}")
         return MessageResponse(
             message="User deactivated successfully",
             success=True
@@ -337,6 +359,7 @@ async def deactivate_user(
         raise
     
     except Exception as e:
+        logger.error(f"Error deactivating user {user_id}: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to deactivate user"

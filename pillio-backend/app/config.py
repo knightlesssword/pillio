@@ -1,6 +1,14 @@
 from pydantic_settings import BaseSettings
 from typing import List, Optional
 import os
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -62,8 +70,15 @@ class Settings(BaseSettings):
     
     def ensure_upload_dir_exists(self) -> None:
         """Create upload directory if it doesn't exist"""
-        if not os.path.exists(self.upload_dir):
-            os.makedirs(self.upload_dir)
+        import logging
+        logger = logging.getLogger(__name__)
+        try:
+            if not os.path.exists(self.upload_dir):
+                os.makedirs(self.upload_dir)
+                logger.info(f"Created upload directory: {self.upload_dir}")
+        except Exception as e:
+            logger.error(f"Failed to create upload directory: {e}")
+            raise
 
 
 # Create a global instance

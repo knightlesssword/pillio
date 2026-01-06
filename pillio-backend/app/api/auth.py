@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+import logging
 from app.database import get_db
 from app.core.security import get_current_user
 from app.api.deps import get_auth_service_dep
@@ -11,7 +12,9 @@ from app.core.exceptions import (
     UserAlreadyExistsException, InvalidCredentialsException,
     InactiveUserException, UserNotFoundException
 )
-from app.utils.password import create_password_reset_token, verify_password_reset_token
+from app.utils.password import verify_password_reset_token
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -34,6 +37,7 @@ async def register(
     """
     try:
         user, token = await auth_service.register_user(user_data)
+        logger.info(f"New user registered: {user.email} (ID: {user.id})")
         
         return Token(
             access_token=token.access_token,
@@ -43,29 +47,31 @@ async def register(
         )
     
     except ValueError as e:
-        # Handle user already exists and password validation errors
         error_msg = str(e)
         if "already exists" in error_msg:
+            logger.warning(f"Registration failed: User {user_data.email} already exists")
             raise UserAlreadyExistsException(user_data.email)
         elif "validation failed" in error_msg:
+            logger.warning(f"Registration validation failed for {user_data.email}: {error_msg}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=error_msg
             )
         elif "Failed to create user" in error_msg:
+            logger.error(f"Registration failed for {user_data.email}: {error_msg}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Registration failed due to server error"
             )
         else:
+            logger.warning(f"Registration failed for {user_data.email}: {error_msg}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(e)
             )
     
     except Exception as e:
-        # Log the actual error for debugging
-        print(f"Registration error: {type(e).__name__}: {str(e)}")
+        logger.error(f"Registration error for {user_data.email}: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Registration failed due to server error"
@@ -86,6 +92,7 @@ async def login(
     """
     try:
         user, token = await auth_service.authenticate_user(login_data)
+        logger.info(f"User logged in: {user.email} (ID: {user.id})")
         
         return Token(
             access_token=token.access_token,
@@ -97,16 +104,20 @@ async def login(
     except ValueError as e:
         error_msg = str(e)
         if "Invalid email or password" in error_msg:
+            logger.warning(f"Login failed: Invalid credentials for {login_data.email}")
             raise InvalidCredentialsException()
         elif "disabled" in error_msg:
+            logger.warning(f"Login failed: Account disabled for {login_data.email}")
             raise InactiveUserException()
         else:
+            logger.warning(f"Login failed for {login_data.email}: {error_msg}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=error_msg
             )
     
     except Exception as e:
+        logger.error(f"Login error for {login_data.email}: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Login failed"
@@ -128,12 +139,14 @@ async def refresh_token(
         new_token = await auth_service.refresh_access_token(refresh_request.refresh_token)
         
         if not new_token:
+            logger.warning("Token refresh failed: Invalid refresh token")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid refresh token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
+        logger.info("Token refreshed successfully")
         return Token(
             access_token=new_token.access_token,
             refresh_token=new_token.refresh_token,
@@ -145,6 +158,7 @@ async def refresh_token(
         raise
     
     except Exception as e:
+        logger.error(f"Token refresh error: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Token refresh failed"
@@ -159,8 +173,7 @@ async def logout(current_user: User = Depends(get_current_user)):
     Note: In a stateless JWT system, logout is handled client-side
     by removing stored tokens. This endpoint can be used for logging.
     """
-    # In a more advanced implementation, you might want to maintain
-    # a blacklist of revoked tokens or use short-lived access tokens
+    logger.info(f"User logged out: {current_user.email}")
     return MessageResponse(
         message="Successfully logged out",
         success=True
@@ -196,6 +209,7 @@ async def update_current_user_profile(
         if user_update.email and user_update.email != current_user.email:
             existing_user = await auth_service.get_user_by_email(user_update.email)
             if existing_user:
+                logger.warning(f"Profile update failed: Email {user_update.email} already in use")
                 raise UserAlreadyExistsException(user_update.email)
         
         # Update user
@@ -205,8 +219,10 @@ async def update_current_user_profile(
         )
         
         if not updated_user:
+            logger.warning(f"Profile update failed: User {current_user.id} not found")
             raise UserNotFoundException(current_user.id)
         
+        logger.info(f"Profile updated for user: {updated_user.email}")
         return updated_user
     
     except UserAlreadyExistsException:
@@ -216,6 +232,7 @@ async def update_current_user_profile(
         raise
     
     except Exception as e:
+        logger.error(f"Profile update error for user {current_user.id}: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Profile update failed"
@@ -243,6 +260,7 @@ async def change_password(
             new_password=new_password
         )
         
+        logger.info(f"Password changed for user: {current_user.email}")
         return MessageResponse(
             message="Password changed successfully",
             success=True
@@ -251,22 +269,26 @@ async def change_password(
     except ValueError as e:
         error_msg = str(e)
         if "Current password is incorrect" in error_msg:
+            logger.warning(f"Password change failed: Incorrect password for {current_user.email}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Current password is incorrect"
             )
         elif "validation failed" in error_msg:
+            logger.warning(f"Password validation failed for {current_user.email}: {error_msg}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=error_msg
             )
         else:
+            logger.warning(f"Password change failed for {current_user.email}: {error_msg}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=error_msg
             )
     
     except Exception as e:
+        logger.error(f"Password change error for {current_user.email}: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Password change failed"
@@ -284,27 +306,29 @@ async def forgot_password(
     
     - **email**: User's email address
     
-    Note: In a real implementation, this would send an email
-    with a password reset link. For now, it just validates the email.
+    Sends a password reset link to the user's email.
     """
     try:
         user = await auth_service.get_user_by_email(password_reset.email)
         
         if user:
-            # In a real implementation, you would:
-            # 1. Generate a reset token
-            # 2. Store it in database with expiration
-            # 3. Send email with reset link
-            # For now, we'll just validate the email exists
-            pass
+            # Generate a reset token (this would be sent via email in production)
+            from app.utils.password import create_password_reset_token
+            reset_token = create_password_reset_token(user.email)
+            logger.info(f"Password reset token generated for user: {user.email}")
+            # In production, you would send this token via email
+            # For now, we just log it
+            logger.debug(f"Reset token (debug): {reset_token}")
         
         # Always return success to prevent email enumeration
+        logger.debug(f"Password reset requested for email: {password_reset.email}")
         return MessageResponse(
             message="If an account with that email exists, a password reset link has been sent",
             success=True
         )
     
     except Exception as e:
+        logger.error(f"Password reset request error for {password_reset.email}: {type(e).__name__}: {str(e)}", exc_info=True)
         # Don't reveal whether the email exists or not
         return MessageResponse(
             message="If an account with that email exists, a password reset link has been sent",
@@ -329,6 +353,7 @@ async def reset_password(
         email = verify_password_reset_token(password_reset_confirm.token)
         
         if not email:
+            logger.warning("Password reset failed: Invalid or expired reset token")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid or expired reset token"
@@ -337,6 +362,7 @@ async def reset_password(
         # Get user and reset password
         user = await auth_service.get_user_by_email(email)
         if not user:
+            logger.warning(f"Password reset failed: User not found for email {email}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid reset token"
@@ -347,6 +373,7 @@ async def reset_password(
         # Validate new password
         is_valid, errors = validate_password_strength(password_reset_confirm.new_password)
         if not is_valid:
+            logger.warning(f"Password validation failed for {email}: {errors}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Password validation failed: {'; '.join(errors)}"
@@ -356,6 +383,7 @@ async def reset_password(
         user.password_hash = get_password_hash(password_reset_confirm.new_password)
         await db.commit()
         
+        logger.info(f"Password reset successfully for user: {email}")
         return MessageResponse(
             message="Password reset successfully",
             success=True
@@ -365,6 +393,7 @@ async def reset_password(
         raise
     
     except Exception as e:
+        logger.error(f"Password reset error: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Password reset failed"

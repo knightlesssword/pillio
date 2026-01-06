@@ -1,18 +1,20 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+import logging
 from app.database import get_db
 from app.core.security import get_current_user
 from app.services.medicine_service import MedicineService
 from app.models.user import User
+from app.models.inventory_history import InventoryHistory
 from app.schemas.medicine import (
     Medicine as MedicineSchema, 
     MedicineCreate, 
     MedicineUpdate,
     MedicineFilter,
-    MedicineWithDetails,
-    MedicineWithHistory
+    MedicineWithDetails
 )
 from app.schemas.inventory_history import InventoryHistory as InventoryHistorySchema
 from app.schemas.common import PaginatedResponse, MessageResponse
@@ -20,6 +22,8 @@ from app.core.exceptions import (
     MedicineNotFoundException, MedicineAlreadyExistsException,
     InsufficientStockException
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -53,15 +57,18 @@ async def create_medicine(
             user_id=current_user.id,
             medicine_data=medicine_data
         )
+        logger.info(f"Medicine created: '{medicine.name}' (ID: {medicine.id}) for user {current_user.id}")
         return medicine
     
     except MedicineAlreadyExistsException:
+        logger.warning(f"Medicine creation failed: '{medicine_data.name}' already exists for user {current_user.id}")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Medicine '{medicine_data.name}' already exists"
         )
     
     except Exception as e:
+        logger.error(f"Error creating medicine: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create medicine"
@@ -100,6 +107,7 @@ async def get_medicines(
         
         pages = (total_count + per_page - 1) // per_page
         
+        logger.debug(f"Fetched {len(medicines)} medicines for user {current_user.id} (total: {total_count})")
         return PaginatedResponse(
             items=medicines,
             total=total_count,
@@ -109,6 +117,7 @@ async def get_medicines(
         )
     
     except Exception as e:
+        logger.error(f"Error fetching medicines: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch medicines"
@@ -130,9 +139,11 @@ async def search_medicines(
             user_id=current_user.id,
             query=q
         )
+        logger.debug(f"Search for '{q}' returned {len(medicines)} medicines for user {current_user.id}")
         return medicines
     
     except Exception as e:
+        logger.error(f"Error searching medicines: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Search failed"
@@ -152,9 +163,11 @@ async def get_low_stock_medicines(
         medicines = await medicine_service.get_low_stock_medicines(
             user_id=current_user.id
         )
+        logger.debug(f"Found {len(medicines)} low stock medicines for user {current_user.id}")
         return medicines
     
     except Exception as e:
+        logger.error(f"Error fetching low stock medicines: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch low stock medicines"
@@ -176,9 +189,11 @@ async def get_medicines_by_form(
             user_id=current_user.id,
             form=form
         )
+        logger.debug(f"Found {len(medicines)} medicines of form '{form}' for user {current_user.id}")
         return medicines
     
     except Exception as e:
+        logger.error(f"Error fetching medicines by form: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch medicines by form"
@@ -198,9 +213,11 @@ async def get_medicine_statistics(
         stats = await medicine_service.get_medicine_statistics(
             user_id=current_user.id
         )
+        logger.debug(f"Medicine statistics for user {current_user.id}: {stats}")
         return stats
     
     except Exception as e:
+        logger.error(f"Error fetching medicine statistics: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch statistics"
@@ -224,14 +241,17 @@ async def get_medicine(
         )
         
         if not medicine:
+            logger.warning(f"Medicine {medicine_id} not found for user {current_user.id}")
             raise MedicineNotFoundException(medicine_id)
         
+        logger.debug(f"Medicine {medicine_id} fetched for user {current_user.id}")
         return medicine
     
     except MedicineNotFoundException:
         raise
     
     except Exception as e:
+        logger.error(f"Error fetching medicine {medicine_id}: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch medicine"
@@ -265,15 +285,18 @@ async def update_medicine(
             medicine_update=medicine_update
         )
         
+        logger.info(f"Medicine {medicine_id} updated for user {current_user.id}")
         return medicine
     
     except MedicineNotFoundException:
+        logger.warning(f"Medicine update failed: Medicine {medicine_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Medicine with ID {medicine_id} not found"
         )
     
     except Exception as e:
+        logger.error(f"Error updating medicine {medicine_id}: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update medicine"
@@ -297,20 +320,24 @@ async def delete_medicine(
         )
         
         if not success:
+            logger.warning(f"Medicine deletion failed: Medicine {medicine_id} not found")
             raise MedicineNotFoundException(medicine_id)
         
+        logger.info(f"Medicine {medicine_id} deleted for user {current_user.id}")
         return MessageResponse(
             message="Medicine deleted successfully",
             success=True
         )
     
     except MedicineNotFoundException:
+        logger.warning(f"Medicine deletion failed: Medicine {medicine_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Medicine with ID {medicine_id} not found"
         )
     
     except Exception as e:
+        logger.error(f"Error deleting medicine {medicine_id}: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete medicine"
@@ -340,21 +367,25 @@ async def adjust_stock(
             reason=reason
         )
         
+        logger.info(f"Stock adjusted for medicine {medicine_id}: {adjustment} ({reason})")
         return medicine
     
     except MedicineNotFoundException:
+        logger.warning(f"Stock adjustment failed: Medicine {medicine_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Medicine with ID {medicine_id} not found"
         )
     
-    except InsufficientStockException:
+    except InsufficientStockException as e:
+        logger.warning(f"Stock adjustment failed: Insufficient stock for medicine {medicine_id}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
     
     except Exception as e:
+        logger.error(f"Error adjusting stock for medicine {medicine_id}: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to adjust stock"
@@ -379,12 +410,10 @@ async def get_medicine_history(
         )
         
         if not medicine:
+            logger.warning(f"Medicine history fetch failed: Medicine {medicine_id} not found")
             raise MedicineNotFoundException(medicine_id)
         
         # Get inventory history
-        from app.models.inventory_history import InventoryHistory
-        from sqlalchemy.orm import selectinload
-        
         result = await db.execute(
             select(InventoryHistory)
             .options(selectinload(InventoryHistory.medicine))
@@ -393,12 +422,14 @@ async def get_medicine_history(
         )
         
         history_records = result.scalars().all()
+        logger.debug(f"Fetched {len(history_records)} history records for medicine {medicine_id}")
         return list(history_records)
     
     except MedicineNotFoundException:
         raise
     
     except Exception as e:
+        logger.error(f"Error fetching medicine history for {medicine_id}: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch medicine history"
