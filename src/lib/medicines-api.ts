@@ -117,9 +117,9 @@ export const medicinesApi = {
   getStatistics: (): Promise<AxiosResponse<Record<string, unknown>>> =>
     api.get<Record<string, unknown>>('/medicines/statistics'),
 
-  // Adjust stock
-  adjustStock: (id: number, data: StockAdjustment): Promise<AxiosResponse<ApiMedicine>> =>
-    api.post<ApiMedicine>(`/medicines/${id}/adjust-stock`, data),
+  // Adjust stock (uses query params as per backend API)
+  adjustStock: (id: number, adjustment: number, reason?: string): Promise<AxiosResponse<ApiMedicine>> =>
+    api.post<ApiMedicine>(`/medicines/${id}/adjust-stock`, null, { params: { adjustment, reason } }),
 
   // Get inventory history
   getHistory: (id: number): Promise<AxiosResponse<InventoryHistory[]>> =>

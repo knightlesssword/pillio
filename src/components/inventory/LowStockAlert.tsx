@@ -1,55 +1,23 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { AlertTriangle, Package, ChevronRight, Plus } from 'lucide-react';
+import { AlertTriangle, Package } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { cn, getStockStatus, getStockStatusColor } from '@/lib/utils';
-import { ROUTES } from '@/lib/constants';
+import { cn, getStockStatus } from '@/lib/utils';
+import medicinesApi, { type ApiMedicine } from '@/lib/medicines-api';
+import LoadingSpinner from '@/components/common/LoadingSpinner';
+import { StockAdjustmentDialog } from '@/components/medicine/StockAdjustmentDialog';
 
-interface LowStockItem {
-  id: string;
-  name: string;
-  currentStock: number;
-  minimumStock: number;
-  unit: string;
-}
-
-// Mock data
-const mockLowStockItems: LowStockItem[] = [
-  {
-    id: '1',
-    name: 'Aspirin',
-    currentStock: 5,
-    minimumStock: 30,
-    unit: 'tablets',
-  },
-  {
-    id: '2',
-    name: 'Vitamin D3',
-    currentStock: 8,
-    minimumStock: 30,
-    unit: 'capsules',
-  },
-  {
-    id: '3',
-    name: 'Metformin',
-    currentStock: 12,
-    minimumStock: 60,
-    unit: 'tablets',
-  },
-];
-
-function StockItem({ item }: { item: LowStockItem }) {
-  const percentage = Math.round((item.currentStock / item.minimumStock) * 100);
-  const status = getStockStatus(item.currentStock, item.minimumStock);
+function StockItem({ item, onClick }: { item: ApiMedicine; onClick: () => void }) {
+  const percentage = Math.round((item.current_stock / item.min_stock_alert) * 100);
+  const status = getStockStatus(item.current_stock, item.min_stock_alert);
 
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
-      className="p-3 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors"
+      onClick={onClick}
+      className="p-3 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors cursor-pointer"
     >
       <div className="flex items-center justify-between mb-2">
         <h4 className="font-medium text-foreground text-sm">{item.name}</h4>
@@ -61,7 +29,7 @@ function StockItem({ item }: { item: LowStockItem }) {
             'bg-info/10 text-info'
           )}
         >
-          {item.currentStock} {item.unit} left
+          {item.current_stock} {item.unit} left
         </span>
       </div>
       <Progress
@@ -78,7 +46,74 @@ function StockItem({ item }: { item: LowStockItem }) {
 }
 
 export default function LowStockAlert() {
-  if (mockLowStockItems.length === 0) {
+  const [lowStockItems, setLowStockItems] = useState<ApiMedicine[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedMedicine, setSelectedMedicine] = useState<ApiMedicine | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const fetchLowStockItems = async () => {
+    try {
+      setLoading(true);
+      const response = await medicinesApi.getLowStock();
+      setLowStockItems(response.data);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to fetch low stock items:', err);
+      setError('Failed to load stock data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLowStockItems();
+  }, []);
+
+  const handleItemClick = (item: ApiMedicine) => {
+    setSelectedMedicine(item);
+    setDialogOpen(true);
+  };
+
+  const handleSuccess = () => {
+    fetchLowStockItems();
+  };
+
+  if (loading) {
+    return (
+      <Card className="h-full">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg font-semibold flex items-center gap-2">
+            <Package className="h-5 w-5 text-muted-foreground" />
+            Stock Levels
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex items-center justify-center py-8">
+          <LoadingSpinner size="sm" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card className="h-full">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg font-semibold flex items-center gap-2">
+            <Package className="h-5 w-5 text-muted-foreground" />
+            Stock Levels
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-6 text-destructive text-sm">
+            {error}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (lowStockItems.length === 0) {
     return (
       <Card className="h-full">
         <CardHeader className="pb-4">
@@ -100,37 +135,34 @@ export default function LowStockAlert() {
   }
 
   return (
-    <Card className="h-full">
-      <CardHeader className="flex flex-row items-center justify-between pb-4">
-        <CardTitle className="text-lg font-semibold flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5 text-warning" />
-          Low Stock Alert
-        </CardTitle>
-        <Link to={ROUTES.INVENTORY}>
-          <Button variant="ghost" size="sm" className="text-primary">
-            View All
-            <ChevronRight className="h-4 w-4 ml-1" />
-          </Button>
-        </Link>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {mockLowStockItems.map((item, index) => (
-          <motion.div
-            key={item.id}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.05 }}
-          >
-            <StockItem item={item} />
-          </motion.div>
-        ))}
-        <Button variant="outline" className="w-full mt-4" asChild>
-          <Link to={ROUTES.INVENTORY}>
-            <Plus className="h-4 w-4 mr-2" />
-            Refill Stock
-          </Link>
-        </Button>
-      </CardContent>
-    </Card>
+    <>
+      <Card className="h-full">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg font-semibold flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-warning" />
+            Low Stock Alert
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {lowStockItems.map((item, index) => (
+            <motion.div
+              key={item.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.05 }}
+            >
+              <StockItem item={item} onClick={() => handleItemClick(item)} />
+            </motion.div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <StockAdjustmentDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        medicine={selectedMedicine}
+        onSuccess={handleSuccess}
+      />
+    </>
   );
 }

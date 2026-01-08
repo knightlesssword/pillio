@@ -27,7 +27,7 @@ const navItems = [
   { icon: Pill, label: 'Medicines', path: ROUTES.MEDICINES },
   { icon: Bell, label: 'Reminders', path: ROUTES.REMINDERS },
   { icon: FileText, label: 'Prescriptions', path: ROUTES.PRESCRIPTIONS },
-  { icon: Package, label: 'Inventory', path: ROUTES.INVENTORY },
+  // { icon: Package, label: 'Inventory', path: ROUTES.INVENTORY },
   { icon: History, label: 'History', path: ROUTES.HISTORY },
   { icon: BarChart3, label: 'Reports', path: ROUTES.REPORTS },
   { icon: Settings, label: 'Settings', path: ROUTES.SETTINGS },
