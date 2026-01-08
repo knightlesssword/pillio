@@ -1,61 +1,33 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Clock, Check, X, Bell, ChevronRight } from 'lucide-react';
+import { Clock, Check, X, Bell, ChevronRight, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn, formatTime } from '@/lib/utils';
 import { ROUTES } from '@/lib/constants';
+import { remindersApi, type ReminderWithStatus } from '@/lib/reminders-api';
+import { useToast } from '@/hooks/use-toast';
 
-interface Reminder {
-  id: string;
+interface ReminderDisplay {
+  id: number;
   medicineName: string;
   dosage: string;
   time: Date;
-  status: 'pending' | 'taken' | 'missed' | 'upcoming';
+  status: 'pending' | 'taken' | 'missed' | 'upcoming' | 'skipped';
+  is_pending: boolean;
 }
 
-// Mock data
-const mockReminders: Reminder[] = [
-  {
-    id: '1',
-    medicineName: 'Aspirin',
-    dosage: '1 tablet (100mg)',
-    time: new Date(new Date().setHours(8, 0)),
-    status: 'taken',
-  },
-  {
-    id: '2',
-    medicineName: 'Vitamin D3',
-    dosage: '1 capsule (1000 IU)',
-    time: new Date(new Date().setHours(9, 0)),
-    status: 'taken',
-  },
-  {
-    id: '3',
-    medicineName: 'Metformin',
-    dosage: '1 tablet (500mg)',
-    time: new Date(new Date().setHours(13, 0)),
-    status: 'pending',
-  },
-  {
-    id: '4',
-    medicineName: 'Lisinopril',
-    dosage: '1 tablet (10mg)',
-    time: new Date(new Date().setHours(18, 0)),
-    status: 'upcoming',
-  },
-  {
-    id: '5',
-    medicineName: 'Omega-3',
-    dosage: '2 capsules',
-    time: new Date(new Date().setHours(21, 0)),
-    status: 'upcoming',
-  },
-];
-
-function ReminderItem({ reminder }: { reminder: Reminder }) {
+function ReminderItem({ 
+  reminder, 
+  onTake, 
+  onSkip 
+}: { 
+  reminder: ReminderDisplay; 
+  onTake: (id: number) => void;
+  onSkip: (id: number) => void;
+}) {
   const statusConfig = {
     taken: {
       badge: 'Taken',
@@ -79,7 +51,7 @@ function ReminderItem({ reminder }: { reminder: Reminder }) {
     },
   };
 
-  const config = statusConfig[reminder.status];
+  const config = statusConfig[reminder.status as keyof typeof statusConfig] || statusConfig.upcoming;
 
   return (
     <motion.div
@@ -118,10 +90,19 @@ function ReminderItem({ reminder }: { reminder: Reminder }) {
 
       {reminder.status === 'pending' && (
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" className="h-8">
+          <Button 
+            size="sm" 
+            variant="outline" 
+            className="h-8"
+            onClick={() => onSkip(reminder.id)}
+          >
             Skip
           </Button>
-          <Button size="sm" className="h-8 gradient-primary">
+          <Button 
+            size="sm" 
+            className="h-8 gradient-primary"
+            onClick={() => onTake(reminder.id)}
+          >
             Take
           </Button>
         </div>
@@ -131,6 +112,85 @@ function ReminderItem({ reminder }: { reminder: Reminder }) {
 }
 
 export default function UpcomingReminders() {
+  const [reminders, setReminders] = useState<ReminderDisplay[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<number | null>(null);
+  const { toast } = useToast();
+
+  const fetchReminders = async () => {
+    try {
+      setLoading(true);
+      const response = await remindersApi.getTodayWithStatus();
+      const data = response.data;
+      
+      const formatted: ReminderDisplay[] = data.map((r) => ({
+        id: r.id,
+        medicineName: r.medicineName,
+        dosage: r.dosage || 'As prescribed',
+        time: new Date(r.time),
+        status: r.is_pending ? 'pending' : (r.status === 'upcoming' ? 'upcoming' : r.status),
+        is_pending: r.is_pending,
+      }));
+      
+      setReminders(formatted);
+    } catch (error) {
+      console.error('Failed to fetch reminders:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load reminders',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReminders();
+  }, []);
+
+  const handleTake = async (id: number) => {
+    try {
+      setActionLoading(id);
+      await remindersApi.markTaken(id);
+      toast({
+        title: 'Success',
+        description: 'Reminder marked as taken',
+      });
+      fetchReminders();
+    } catch (error) {
+      console.error('Failed to mark as taken:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update reminder',
+        variant: 'destructive',
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleSkip = async (id: number) => {
+    try {
+      setActionLoading(id);
+      await remindersApi.markSkipped(id);
+      toast({
+        title: 'Success',
+        description: 'Reminder skipped',
+      });
+      fetchReminders();
+    } catch (error) {
+      console.error('Failed to skip:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update reminder',
+        variant: 'destructive',
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   return (
     <Card className="h-full">
       <CardHeader className="flex flex-row items-center justify-between pb-4">
@@ -143,16 +203,30 @@ export default function UpcomingReminders() {
         </Link>
       </CardHeader>
       <CardContent className="space-y-3">
-        {mockReminders.map((reminder, index) => (
-          <motion.div
-            key={reminder.id}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.05 }}
-          >
-            <ReminderItem reminder={reminder} />
-          </motion.div>
-        ))}
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : reminders.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            No reminders scheduled for today
+          </div>
+        ) : (
+          reminders.map((reminder, index) => (
+            <motion.div
+              key={reminder.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.05 }}
+            >
+              <ReminderItem 
+                reminder={reminder} 
+                onTake={handleTake}
+                onSkip={handleSkip}
+              />
+            </motion.div>
+          ))
+        )}
       </CardContent>
     </Card>
   );

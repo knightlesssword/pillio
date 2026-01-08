@@ -9,6 +9,7 @@ class ReminderBase(BaseModel):
     reminder_time: time
     frequency: FrequencyType
     specific_days: Optional[List[int]] = None  # [0,1,2,3,4,5,6] for days of week
+    interval_days: Optional[int] = None  # For interval frequency (e.g., every N days)
     dosage_amount: Optional[str] = None
     dosage_unit: Optional[str] = None
     start_date: dt
@@ -28,6 +29,7 @@ class ReminderUpdate(BaseModel):
     reminder_time: Optional[time] = None
     frequency: Optional[FrequencyType] = None
     specific_days: Optional[List[int]] = None
+    interval_days: Optional[int] = None  # For interval frequency
     dosage_amount: Optional[str] = None
     dosage_unit: Optional[str] = None
     start_date: Optional[dt] = None
@@ -49,8 +51,22 @@ class Reminder(ReminderBase):
         from_attributes = True
 
 
+# Medicine info for nested response
+class MedicineInfo(BaseModel):
+    id: int
+    name: str
+    generic_name: Optional[str] = None
+    dosage: str
+    form: str
+    unit: str
+    
+    class Config:
+        from_attributes = True
+
+
 # Reminder with medicine details
 class ReminderWithMedicine(Reminder):
+    medicine: Optional[MedicineInfo] = None
     
     class Config:
         from_attributes = True

@@ -42,40 +42,37 @@
   - Dashboard stats with `GET /users/stats`
   - Add/Edit/Delete modals with form validation
 
+#### Phase 3: Reminders API & Integration ✅ COMPLETED
+- **Backend Status:** Completed
+  - [`pillio-backend/app/services/reminder_service.py`](pillio-backend/app/services/reminder_service.py) - CRUD operations, status tracking, adherence stats
+  - [`pillio-backend/app/api/reminders.py`](pillio-backend/app/api/reminders.py) - 10 API endpoints
+  - [`pillio-backend/app/main.py`](pillio-backend/app/main.py) - Added reminders router
+- **Frontend Status:** Completed
+- **Files Created:**
+  - [`src/lib/reminders-api.ts`](src/lib/reminders-api.ts) - API service with all endpoints
+  - [`src/components/reminder/ReminderFormDialog.tsx`](src/components/reminder/ReminderFormDialog.tsx) - Create/Edit form with medicine selection
+  - [`src/components/reminder/DeleteReminderDialog.tsx`](src/components/reminder/DeleteReminderDialog.tsx) - Delete confirmation dialog
+  - [`src/components/reminder/RemindersCalendarView.tsx`](src/components/reminder/RemindersCalendarView.tsx) - Monthly calendar view
+- **Files Modified:**
+  - [`src/components/dashboard/UpcomingReminders.tsx`](src/components/dashboard/UpcomingReminders.tsx) - Connected to real API, take/skip actions
+  - [`src/pages/RemindersPage.tsx`](src/pages/RemindersPage.tsx) - Full list view with CRUD dialogs + calendar view
+- **Backend Endpoints Implemented:**
+  | Method | Endpoint | Description |
+  |--------|----------|-------------|
+  | `POST` | `/api/v1/reminders` | Create reminder |
+  | `GET` | `/api/v1/reminders` | List reminders (paginated) |
+  | `GET` | `/api/v1/reminders/today` | Get today's reminders |
+  | `GET` | `/api/v1/reminders/today-with-status` | Get reminders with status |
+  | `GET` | `/api/v1/reminders/{id}` | Get single reminder |
+  | `PUT` | `/api/v1/reminders/{id}` | Update reminder |
+  | `DELETE` | `/api/v1/reminders/{id}` | Delete reminder |
+  | `POST` | `/api/v1/reminders/{id}/take` | Mark as taken |
+  | `POST` | `/api/v1/reminders/{id}/skip` | Skip reminder |
+  | `GET` | `/api/v1/reminders/adherence/stats` | Get adherence stats |
+
 ---
 
 ## 📋 Remaining Work
-
-### Phase 3: Reminders API & Integration
-**Priority:** High (core feature)
-
-#### Backend Tasks (Create new)
-| File | Description |
-|------|-------------|
-| `pillio-backend/app/api/reminders.py` | Reminders router with CRUD endpoints |
-| `pillio-backend/app/services/reminder_service.py` | Reminder business logic |
-| `pillio-backend/app/schemas/reminder.py` | Reminder Pydantic schemas |
-
-#### Backend Endpoints to Create
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/v1/reminders` | Create reminder |
-| `GET` | `/api/v1/reminders` | List reminders |
-| `GET` | `/api/v1/reminders/{id}` | Get reminder |
-| `PUT` | `/api/v1/reminders/{id}` | Update reminder |
-| `DELETE` | `/api/v1/reminders/{id}` | Delete reminder |
-| `POST` | `/api/v1/reminders/{id}/take` | Mark as taken |
-| `POST` | `/api/v1/reminders/{id}/skip` | Skip reminder |
-
-#### Frontend Tasks
-| File | Description |
-|------|-------------|
-| `src/lib/reminders-api.ts` | Create Reminders API service |
-| `src/pages/RemindersPage.tsx` | Connect to real API + CRUD dialogs |
-| `src/components/dashboard/UpcomingReminders.tsx` | Connect to reminders API |
-| `src/components/reminder/ReminderFormDialog.tsx` | Create Add/Edit reminder dialog |
-
----
 
 ### Phase 4: Prescriptions API & Integration
 **Priority:** Medium
@@ -85,7 +82,7 @@
 |------|-------------|
 | `pillio-backend/app/api/prescriptions.py` | Prescriptions router |
 | `pillio-backend/app/services/prescription_service.py` | Prescription business logic |
-| `pillio-backend/app/schemas/prescription.py` | Prescription Pydantic schemas |
+| `pillio-backend/app/schemas/prescription.py` | Prescription Pydantic schemas (exists) |
 
 #### Backend Endpoints to Create
 | Method | Endpoint | Description |
@@ -115,7 +112,7 @@
 |------|-------------|
 | `pillio-backend/app/api/notifications.py` | Notifications router |
 | `pillio-backend/app/services/notification_service.py` | Notification business logic |
-| `pillio-backend/app/schemas/notification.py` | Notification Pydantic schemas |
+| `pillio-backend/app/schemas/notification.py` | Notification Pydantic schemas (exists) |
 
 #### Backend Endpoints to Create
 | Method | Endpoint | Description |
@@ -164,24 +161,25 @@
 
 ## 🔧 Additional Frontend Components Needed
 
-### Dialogs/Forms to Create
+### Dialogs/Forms Created/Needed
 | Component | Status | Description |
 |-----------|--------|-------------|
 | `MedicineFormDialog` | ✅ Created | Add/Edit medicine form |
 | `DeleteMedicineDialog` | ✅ Created | Delete confirmation |
-| `ReminderFormDialog` | ❌ Pending | Add/Edit reminder form |
-| `DeleteReminderDialog` | ❌ Pending | Delete confirmation |
+| `ReminderFormDialog` | ✅ Created | Add/Edit reminder form |
+| `DeleteReminderDialog` | ✅ Created | Delete confirmation |
+| `RemindersCalendarView` | ✅ Created | Monthly calendar view |
 | `PrescriptionFormDialog` | ❌ Pending | Add/Edit prescription form |
 | `DeletePrescriptionDialog` | ❌ Pending | Delete confirmation |
 | `StockAdjustmentDialog` | ❌ Pending | Adjust stock dialog |
 | `PrescriptionUploadDialog` | ❌ Pending | Upload prescription image |
 
-### Pages Still Using Mock Data
+### Pages Status
 | Page | Status | Notes |
 |------|--------|-------|
-| `DashboardPage` | ⚠️ Partial | Stats connected, reminders still mock |
+| `DashboardPage` | ⚠️ Partial | Stats connected, UpcomingReminders connected |
 | `MedicinesPage` | ✅ Done | Fully connected |
-| `RemindersPage` | ❌ Mock | Needs backend API |
+| `RemindersPage` | ✅ Done | Fully connected with CRUD + Calendar |
 | `PrescriptionsPage` | ❌ Mock | Needs backend API |
 | `InventoryPage` | ❌ Not checked | Needs verification |
 | `HistoryPage` | ❌ Mock | Needs backend API |
@@ -192,13 +190,14 @@
 
 ## 📁 Files Summary
 
-### Files Created (Phase 1 & 2)
+### Files Created (Phase 1-3)
 ```
 src/lib/
 ├── api.ts (modified - axios + token refresh)
 ├── auth-api.ts (new)
 ├── medicines-api.ts (new)
 ├── users-api.ts (new)
+└── reminders-api.ts (new)
 
 src/contexts/
 ├── auth-context.ts (new - type definitions)
@@ -208,28 +207,30 @@ src/components/
 ├── medicine/
 │   ├── MedicineFormDialog.tsx (new)
 │   └── DeleteMedicineDialog.tsx (new)
+├── reminder/
+│   ├── ReminderFormDialog.tsx (new)
+│   ├── DeleteReminderDialog.tsx (new)
+│   └── RemindersCalendarView.tsx (new)
 └── dashboard/
-    └── DashboardStats.tsx (modified - real API)
+    ├── DashboardStats.tsx (modified - real API)
+    └── UpcomingReminders.tsx (modified - real API)
 
 src/pages/
-└── MedicinesPage.tsx (modified - real API + dialogs)
+├── MedicinesPage.tsx (modified - real API + dialogs)
+└── RemindersPage.tsx (modified - real API + dialogs + calendar)
 
 src/types/
 └── index.ts (modified - API types + converters)
 ```
 
-### Files to Create (Phase 3-6)
+### Files to Create (Phase 4-6)
 ```
 src/lib/
-├── reminders-api.ts (new)
 ├── prescriptions-api.ts (new)
 ├── notifications-api.ts (new)
 └── reports-api.ts (new)
 
 src/components/
-├── reminder/
-│   ├── ReminderFormDialog.tsx (new)
-│   └── DeleteReminderDialog.tsx (new)
 ├── prescription/
 │   ├── PrescriptionFormDialog.tsx (new)
 │   ├── DeletePrescriptionDialog.tsx (new)
@@ -241,7 +242,6 @@ src/components/
     └── StockAdjustmentDialog.tsx (new)
 
 src/pages/
-├── RemindersPage.tsx (modify)
 ├── PrescriptionsPage.tsx (modify)
 ├── InventoryPage.tsx (modify)
 ├── HistoryPage.tsx (modify)
@@ -256,10 +256,10 @@ src/contexts/
 
 ## 🎯 Next Steps
 
-1. **Phase 3 (Reminders)**: Create backend API first, then frontend integration
-2. **Phase 4 (Prescriptions)**: Create backend API, then frontend integration  
-3. **Phase 5 (Notifications)**: Create backend API, then frontend integration
-4. **Phase 6 (Reports)**: Create backend API, then frontend integration
+1. **Phase 4 (Prescriptions)**: Create backend API, then frontend integration
+2. **Phase 5 (Notifications)**: Create backend API, then frontend integration
+3. **Phase 6 (Reports)**: Create backend API, then frontend integration
+4. **Remaining Pages**: Connect InventoryPage, HistoryPage, SettingsPage
 5. **Testing**: Comprehensive integration testing across all modules
 
-**Recommended:** Continue with Phase 3 (Reminders) as it's a core feature and the `RemindersPage` already has mock data that needs to be connected.
+**Recommended:** Continue with Phase 4 (Prescriptions) as the Reminders feature is now complete.

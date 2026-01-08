@@ -8,8 +8,9 @@ class Reminder(BaseModel):
     
     # Reminder scheduling
     reminder_time = Column(Time, nullable=False)
-    frequency = Column(String(50), nullable=False)  # daily, weekly, custom
+    frequency = Column(String(50), nullable=False)  # daily, specific_days, interval
     specific_days = Column(ARRAY(Integer), nullable=True)  # [0,1,2,3,4,5,6] for days of week
+    interval_days = Column(Integer, nullable=True)  # For interval frequency (e.g., every N days)
     
     # Dosage information
     dosage_amount = Column(String(20), nullable=True)  # e.g., "1", "2", "0.5"

@@ -109,6 +109,6 @@ class StockChangeType(str, Enum):
 # Frequency types enum
 class FrequencyType(str, Enum):
     DAILY = "daily"
-    WEEKLY = "weekly"
-    CUSTOM = "custom"
+    SPECIFIC_DAYS = "specific_days"
+    INTERVAL = "interval"
 
