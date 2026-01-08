@@ -4,6 +4,13 @@ from app.models.base import BaseModel
 
 
 class Prescription(BaseModel):
+    """
+    Prescription model representing a doctor's prescription.
+    
+    A prescription can contain multiple medicines, each with their own
+    dosage, frequency, and duration. The medicines are stored in the
+    PrescriptionMedicine table for many-to-many relationship.
+    """
     __tablename__ = "prescriptions"
     
     # Prescription details
@@ -12,27 +19,21 @@ class Prescription(BaseModel):
     prescription_date = Column(Date, nullable=False)
     valid_until = Column(Date, nullable=True)
     
-    # Medication instructions
-    dosage_instructions = Column(Text, nullable=True)
-    frequency = Column(String(100), nullable=True)
-    duration_days = Column(Integer, nullable=True)
+    # Additional information
+    notes = Column(Text, nullable=True)
     
     # File storage
     image_url = Column(String(500), nullable=True)
-    
-    # Additional information
-    notes = Column(Text, nullable=True)
     
     # Status
     is_active = Column(Boolean, default=True)
     
     # Foreign keys
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    medicine_id = Column(Integer, ForeignKey("medicines.id", ondelete="CASCADE"), nullable=True)
     
     # Relationships
     user = relationship("User", back_populates="prescriptions")
-    medicine = relationship("Medicine", back_populates="prescriptions")
+    prescription_medicines = relationship("PrescriptionMedicine", back_populates="prescription", cascade="all, delete-orphan")
     reminders = relationship("Reminder", back_populates="prescription")
     
     def __repr__(self) -> str:

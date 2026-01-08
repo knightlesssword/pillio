@@ -1,6 +1,10 @@
 from app.schemas.user import User, UserCreate, UserUpdate, UserLogin
 from app.schemas.medicine import Medicine, MedicineCreate, MedicineUpdate
-from app.schemas.prescription import Prescription, PrescriptionCreate, PrescriptionUpdate
+from app.schemas.prescription import (
+    Prescription, PrescriptionCreate, PrescriptionUpdate, PrescriptionWithMedicines,
+    PrescriptionMedicineCreate, PrescriptionMedicineResponse, PrescriptionFilter,
+    PrescriptionUpdateWithMedicines
+)
 from app.schemas.reminder import Reminder, ReminderCreate, ReminderUpdate, ReminderLogCreate
 from app.schemas.inventory_history import InventoryHistory, InventoryHistoryCreate
 from app.schemas.notification import Notification, NotificationUpdate
@@ -18,7 +22,9 @@ __all__ = [
     "Medicine", "MedicineCreate", "MedicineUpdate",
     
     # Prescription schemas
-    "Prescription", "PrescriptionCreate", "PrescriptionUpdate",
+    "Prescription", "PrescriptionCreate", "PrescriptionUpdate", "PrescriptionWithMedicines",
+    "PrescriptionMedicineCreate", "PrescriptionMedicineResponse", "PrescriptionFilter",
+    "PrescriptionUpdateWithMedicines",
     
     # Reminder schemas
     "Reminder", "ReminderCreate", "ReminderUpdate", "ReminderLogCreate",

@@ -9,6 +9,7 @@ from app.database import create_db_and_tables
 from app.api.auth import router as auth_router
 from app.api.users import router as users_router
 from app.api.medicines import router as medicines_router
+from app.api.prescriptions import router as prescriptions_router
 from app.api.reminders import router as reminders_router
 from app.core.exceptions import (
     AuthException, PermissionException, ValidationException,
@@ -137,6 +138,12 @@ app.include_router(
     medicines_router,
     prefix=f"{settings.api_v1_str}/medicines",
     tags=["Medicines"]
+)
+
+app.include_router(
+    prescriptions_router,
+    prefix=f"{settings.api_v1_str}/prescriptions",
+    tags=["Prescriptions"]
 )
 
 app.include_router(

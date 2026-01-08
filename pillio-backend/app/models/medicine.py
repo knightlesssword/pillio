@@ -25,7 +25,7 @@ class Medicine(BaseModel):
     
     # Relationships
     user = relationship("User", back_populates="medicines")
-    prescriptions = relationship("Prescription", back_populates="medicine")
+    prescription_medicines = relationship("PrescriptionMedicine", back_populates="medicine")
     reminders = relationship("Reminder", back_populates="medicine")
     inventory_history = relationship("InventoryHistory", back_populates="medicine", cascade="all, delete-orphan")
     
