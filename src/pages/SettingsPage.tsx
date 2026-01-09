@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
-import { User, Bell, Shield, LogOut } from 'lucide-react';
+import { User, Bell, Shield, LogOut, Trash2 } from 'lucide-react';
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
@@ -15,7 +15,7 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <PageHeader title="Settings" description="Manage your account and preferences" />
 
-      <div className="grid gap-6">
+      <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -31,7 +31,7 @@ export default function SettingsPage() {
               </div>
               <div className="space-y-2">
                 <Label>Email</Label>
-                <Input defaultValue={user?.email} type="email" />
+                <Input defaultValue={user?.email} type="email" disabled/>
               </div>
             </div>
             <Button className="gradient-primary">Save Changes</Button>
@@ -69,7 +69,9 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+      </div>
 
+      <div className="grid gap-6 md:grid-cols-2">
         <Card className="border-destructive/20">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-destructive">
@@ -78,8 +80,28 @@ export default function SettingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              Sign out of your account.
+            </p>
             <Button variant="destructive" onClick={logout}>
-              Sign out of your account
+              Sign out
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="border-destructive/20">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" />
+              Delete Account
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              Permanently delete your account and all associated data. This action cannot be undone.
+            </p>
+            <Button variant="destructive">
+              Delete Account
             </Button>
           </CardContent>
         </Card>

@@ -11,6 +11,7 @@ from app.api.users import router as users_router
 from app.api.medicines import router as medicines_router
 from app.api.prescriptions import router as prescriptions_router
 from app.api.reminders import router as reminders_router
+from app.api.search import router as search_router
 from app.core.exceptions import (
     AuthException, PermissionException, ValidationException,
     NotFoundException, ConflictException, BadRequestException
@@ -150,6 +151,12 @@ app.include_router(
     reminders_router,
     prefix=f"{settings.api_v1_str}/reminders",
     tags=["Reminders"]
+)
+
+app.include_router(
+    search_router,
+    prefix=f"{settings.api_v1_str}",
+    tags=["Search"]
 )
 
 

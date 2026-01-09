@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { Menu, Bell, Search, User, LogOut, Settings, HelpCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import { getInitials } from '@/lib/utils';
+import UniversalSearch from '@/components/search/UniversalSearch';
 
 interface NavbarProps {
   onMenuClick: () => void;
@@ -56,15 +56,8 @@ export default function Navbar({ onMenuClick }: NavbarProps) {
         </Link>
 
         {/* Search */}
-        <div className="flex-1 max-w-md hidden md:block">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Search medicines, reminders..."
-              className="pl-10 bg-secondary/50 border-0 focus:bg-card"
-            />
-          </div>
+        <div className="flex-1 max-w-md hidden md:block px-4">
+          <UniversalSearch />
         </div>
 
         {/* Right side */}
