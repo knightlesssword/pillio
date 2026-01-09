@@ -104,6 +104,33 @@ export interface AdherenceStats {
   adherence_rate: number;
 }
 
+export interface ReminderHistoryItem {
+  id: number;
+  medicine_name: string;
+  dosage: string;
+  scheduled_time: string | null;
+  taken_time: string | null;
+  status: 'taken' | 'skipped' | 'missed';
+  notes: string | null;
+}
+
+export interface ReminderHistoryParams {
+  start_date: string;
+  end_date: string;
+  reminder_status?: string;
+  medicine_id?: number;
+  page?: number;
+  per_page?: number;
+}
+
+export interface ReminderHistoryResponse {
+  items: ReminderHistoryItem[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+}
+
 export const remindersApi = {
   // Create a new reminder
   create: (data: ReminderCreate): Promise<AxiosResponse<ApiReminder>> =>
@@ -144,6 +171,14 @@ export const remindersApi = {
   // Get adherence statistics
   getAdherenceStats: (startDate: string, endDate: string): Promise<AxiosResponse<AdherenceStats>> =>
     api.get<AdherenceStats>('/reminders/adherence/stats', { params: { start_date: startDate, end_date: endDate } }),
+
+  // Get reminder history
+  getHistory: (params: ReminderHistoryParams): Promise<AxiosResponse<ReminderHistoryResponse>> =>
+    api.get<ReminderHistoryResponse>('/reminders/history', { params }),
+
+  // Mark overdue reminders as missed
+  markMissed: (): Promise<AxiosResponse<{ message: string; count: number }>> =>
+    api.post<{ message: string; count: number }>('/reminders/mark-missed'),
 };
 
 export default remindersApi;

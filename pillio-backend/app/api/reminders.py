@@ -212,6 +212,66 @@ async def get_today_reminders_with_status(
         )
 
 
+@router.get("/history")
+async def get_reminder_history(
+    start_date: date = Query(..., description="Start date"),
+    end_date: date = Query(..., description="End date"),
+    reminder_status: Optional[str] = Query(None, description="Filter by status (taken, skipped, missed)"),
+    medicine_id: Optional[int] = Query(None, description="Filter by medicine ID"),
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(20, ge=1, le=100, description="Items per page"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    reminder_service: ReminderService = Depends(get_reminder_service)
+):
+    """Get reminder history with optional filtering and pagination"""
+    try:
+        history, total_count = await reminder_service.get_reminder_history(
+            user_id=current_user.id,
+            start_date=start_date,
+            end_date=end_date,
+            status=reminder_status,
+            medicine_id=medicine_id,
+            page=page,
+            per_page=per_page
+        )
+        
+        pages = (total_count + per_page - 1) // per_page
+        
+        return {
+            "items": history,
+            "total": total_count,
+            "page": page,
+            "per_page": per_page,
+            "pages": pages
+        }
+    except Exception as e:
+        logger.error(f"Error fetching reminder history: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch reminder history"
+        )
+
+
+@router.get("/mark-missed")
+async def mark_overdue_reminders_missed(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    reminder_service: ReminderService = Depends(get_reminder_service)
+):
+    """Mark all overdue reminders as missed (can be called by scheduler)"""
+    try:
+        count = await reminder_service.mark_overdue_reminders_as_missed(user_id=current_user.id)
+        logger.info(f"Marked {count} reminders as missed for user {current_user.id}")
+        return {"message": f"Marked {count} reminders as missed", "count": count}
+    except Exception as e:
+        logger.error(f"Error marking reminders as missed: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to mark reminders as missed"
+        )
+
+
 @router.get("/{reminder_id}", response_model=ReminderWithLogs)
 async def get_reminder(
     reminder_id: int,
@@ -398,3 +458,6 @@ async def get_adherence_stats(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch adherence statistics"
         )
+
+
+

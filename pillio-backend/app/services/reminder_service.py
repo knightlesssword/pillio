@@ -308,3 +308,132 @@ class ReminderService:
             "missed": missed,
             "adherence_rate": round(adherence_rate, 2)
         }
+    
+    async def get_reminder_history(
+        self,
+        user_id: int,
+        start_date: date,
+        end_date: date,
+        status: Optional[str] = None,
+        medicine_id: Optional[int] = None,
+        page: int = 1,
+        per_page: int = 20
+    ) -> Tuple[List[dict], int]:
+        """Get reminder history with filtering and pagination"""
+        start_datetime = datetime.combine(start_date, time.min)
+        end_datetime = datetime.combine(end_date, time.max)
+        
+        # Build query with joins
+        query = select(ReminderLog).join(Reminder).where(
+            and_(
+                Reminder.user_id == user_id,
+                ReminderLog.scheduled_time >= start_datetime,
+                ReminderLog.scheduled_time <= end_datetime
+            )
+        )
+        
+        # Apply status filter
+        if status:
+            query = query.where(ReminderLog.status == status)
+        
+        # Apply medicine filter
+        if medicine_id:
+            query = query.where(Reminder.medicine_id == medicine_id)
+        
+        # Get total count
+        count_query = query.with_only_columns(ReminderLog.id)
+        result = await self.db.execute(count_query)
+        total_count = len(result.scalars().all())
+        
+        # Apply pagination
+        query = query.offset((page - 1) * per_page).limit(per_page)
+        query = query.order_by(ReminderLog.scheduled_time.desc())
+        
+        # Execute query
+        result = await self.db.execute(query)
+        logs = result.scalars().all()
+        
+        # Build response with medicine info
+        history = []
+        for log in logs:
+            # Get reminder with medicine (eagerly load medicine relationship)
+            reminder_query = select(Reminder).where(Reminder.id == log.reminder_id)
+            reminder_query = reminder_query.options(selectinload(Reminder.medicine))
+            reminder_result = await self.db.execute(reminder_query)
+            reminder = reminder_result.scalar_one_or_none()
+            
+            if reminder and reminder.medicine:
+                medicine_name = reminder.medicine.name
+                dosage = ""
+                if reminder.dosage_amount:
+                    dosage = str(reminder.dosage_amount)
+                    if reminder.dosage_unit:
+                        dosage += f" {reminder.dosage_unit}"
+                
+                history.append({
+                    "id": log.id,
+                    "medicine_name": medicine_name,
+                    "dosage": dosage,
+                    "scheduled_time": log.scheduled_time.isoformat() if log.scheduled_time else None,
+                    "taken_time": log.taken_time.isoformat() if log.taken_time else None,
+                    "status": log.status,
+                    "notes": log.notes
+                })
+        
+        return history, total_count
+    
+    async def mark_overdue_reminders_as_missed(self, user_id: int) -> int:
+        """Mark all reminders that passed their scheduled time without action as missed"""
+        today = date.today()
+        now = datetime.now()
+        start_of_day = datetime.combine(today, time.min)
+        
+        # Get all active reminders for user
+        reminders_query = select(Reminder).where(
+            and_(
+                Reminder.user_id == user_id,
+                Reminder.is_active == True,
+                Reminder.start_date <= today,
+                or_(
+                    Reminder.end_date.is_(None),
+                    Reminder.end_date >= today
+                )
+            )
+        )
+        reminders_result = await self.db.execute(reminders_query)
+        reminders = reminders_result.scalars().all()
+        
+        missed_count = 0
+        
+        for reminder in reminders:
+            # Check if reminder time has passed
+            reminder_datetime = datetime.combine(today, reminder.reminder_time)
+            
+            if now > reminder_datetime:
+                # Check if there's already a log for today
+                log_query = select(ReminderLog).where(
+                    and_(
+                        ReminderLog.reminder_id == reminder.id,
+                        ReminderLog.scheduled_time >= start_of_day,
+                        ReminderLog.scheduled_time <= now
+                    )
+                )
+                log_result = await self.db.execute(log_query)
+                existing_log = log_result.scalar_one_or_none()
+                
+                if not existing_log:
+                    # Create missed log entry
+                    log = ReminderLog(
+                        reminder_id=reminder.id,
+                        scheduled_time=reminder_datetime,
+                        taken_time=None,
+                        status=ReminderStatus.MISSED.value,
+                        notes=None,
+                    )
+                    self.db.add(log)
+                    missed_count += 1
+        
+        if missed_count > 0:
+            await self.db.commit()
+        
+        return missed_count
