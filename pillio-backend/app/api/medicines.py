@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +23,7 @@ from app.schemas.medicine import (
     MedicineWithDetails
 )
 from app.schemas.inventory_history import InventoryHistory as InventoryHistorySchema
+from app.schemas.inventory_history import InventoryHistoryWithMedicine
 from app.schemas.common import PaginatedResponse, MessageResponse
 from app.core.exceptions import (
     MedicineNotFoundException, MedicineAlreadyExistsException,
@@ -400,6 +402,94 @@ async def get_medicine_statistics(
             detail="Failed to fetch statistics"
         )
 
+
+@router.get("/inventory-history", response_model=PaginatedResponse[InventoryHistoryWithMedicine])
+async def get_all_inventory_history(
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(20, ge=1, le=100, description="Items per page"),
+    change_type: Optional[str] = Query(None, description="Filter by change type (added, consumed, adjusted, expired)"),
+    start_date: Optional[date] = Query(None, description="Filter by start date (YYYY-MM-DD)"),
+    end_date: Optional[date] = Query(None, description="Filter by end date (YYYY-MM-DD)"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get all inventory history records for the current user with pagination and filtering.
+    """
+    try:
+        logger.debug(f"Fetching inventory history - page={page}, per_page={per_page}, start_date={start_date}, end_date={end_date}, change_type={change_type}, user_id={current_user.id}")
+        
+        # Build query to get all inventory history joined with medicines
+        query = (
+            select(InventoryHistory)
+            .options(selectinload(InventoryHistory.medicine))
+            .join(Medicine, InventoryHistory.medicine_id == Medicine.id)
+            .where(Medicine.user_id == current_user.id)
+        )
+        
+        # Apply change type filter if provided
+        if change_type:
+            query = query.where(InventoryHistory.change_type == change_type)
+        
+        # Apply date range filter if provided
+        if start_date:
+            query = query.where(InventoryHistory.created_at >= start_date)
+        if end_date:
+            # Convert end_date to datetime with end of day to include all records from that date
+            from datetime import datetime, time
+            end_datetime = datetime.combine(end_date, time.max)
+            query = query.where(InventoryHistory.created_at <= end_datetime)
+        
+        # Get total count
+        count_query = select(func.count()).select_from(query.subquery())
+        result = await db.execute(count_query)
+        total_count = result.scalar() or 0
+        
+        # Apply ordering and pagination
+        query = query.order_by(InventoryHistory.created_at.desc())
+        query = query.offset((page - 1) * per_page).limit(per_page)
+        
+        result = await db.execute(query)
+        history_records = result.scalars().all()
+        
+        logger.debug(f"Fetched {len(history_records)} inventory history records for user {current_user.id} (total: {total_count})")
+        # Convert to response schema with medicine name
+        items = []
+        for record in history_records:
+            item = {
+                "id": record.id,
+                "medicine_id": record.medicine_id,
+                "change_amount": record.change_amount,
+                "change_type": record.change_type,
+                "previous_stock": record.previous_stock,
+                "new_stock": record.new_stock,
+                "reference_id": record.reference_id,
+                "notes": record.notes,
+                "created_at": record.created_at,
+                "medicine_name": record.medicine.name if record.medicine else "Unknown"
+            }
+            items.append(InventoryHistoryWithMedicine(**item))
+        
+        pages = (total_count + per_page - 1) // per_page if total_count > 0 else 0
+        
+        logger.debug(f"Fetched {len(items)} inventory history records for user {current_user.id}")
+        return PaginatedResponse(
+            items=items,
+            total=total_count,
+            page=page,
+            per_page=per_page,
+            pages=pages
+        )
+    
+    except Exception as e:
+        logger.error(f"Error fetching all inventory history: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch inventory history"
+        )
+
+
+# Dynamic routes - must come after all static routes to avoid path conflicts
 
 @router.get("/{medicine_id}", response_model=MedicineWithDetails)
 async def get_medicine(

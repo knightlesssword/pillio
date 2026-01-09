@@ -92,13 +92,17 @@ export interface StockAdjustment {
 export interface InventoryHistory {
   id: number;
   medicine_id: number;
+  change_amount: number;
   change_type: string;
-  quantity: number;
   previous_stock: number;
   new_stock: number;
-  reason?: string;
+  reference_id?: number;
   notes?: string;
   created_at: string;
+}
+
+export interface InventoryHistoryWithMedicine extends InventoryHistory {
+  medicine_name: string;
 }
 
 export const medicinesApi = {
@@ -142,9 +146,19 @@ export const medicinesApi = {
   adjustStock: (id: number, adjustment: number, reason?: string): Promise<AxiosResponse<ApiMedicine>> =>
     api.post<ApiMedicine>(`/medicines/${id}/adjust-stock`, null, { params: { adjustment, reason } }),
 
-  // Get inventory history
+  // Get inventory history for a specific medicine
   getHistory: (id: number): Promise<AxiosResponse<InventoryHistory[]>> =>
     api.get<InventoryHistory[]>(`/medicines/${id}/history`),
+
+  // Get all inventory history for user
+  getAllInventoryHistory: (params?: {
+    page?: number;
+    per_page?: number;
+    change_type?: string;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<AxiosResponse<PaginatedResponse<InventoryHistoryWithMedicine>>> =>
+    api.get<PaginatedResponse<InventoryHistoryWithMedicine>>('/medicines/inventory-history', { params }),
 
   // Get medicines for prescription dropdown
   getForPrescription: (search?: string): Promise<AxiosResponse<MedicineDropdownItem[]>> =>

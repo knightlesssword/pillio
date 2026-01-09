@@ -31,6 +31,7 @@ class InventoryHistory(InventoryHistoryBase):
 
 # Inventory history with medicine details
 class InventoryHistoryWithMedicine(InventoryHistory):
+    medicine_name: str
     
     class Config:
         from_attributes = True
