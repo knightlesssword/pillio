@@ -12,10 +12,13 @@ import {
   Settings,
   ChevronLeft,
   X,
+  Moon,
+  Sun,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { ROUTES } from '@/lib/constants';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -35,6 +38,7 @@ const navItems = [
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const location = useLocation();
+  const { theme, toggleTheme } = useTheme();
 
   const sidebarVariants = {
     open: { width: '16rem', transition: { duration: 0.3 } },
@@ -76,6 +80,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+          {/* Navigation Items */}
           {navItems.map((item) => {
             const isActive = location.pathname === item.path;
             const Icon = item.icon;
@@ -121,6 +126,38 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               </Link>
             );
           })}
+          {/* Dark Mode Toggle */}
+          <motion.div
+            className={cn(
+              'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200',
+              'hover:bg-sidebar-accent group cursor-pointer',
+              'text-sidebar-foreground'
+            )}
+            onClick={toggleTheme}
+            whileHover={{ x: 4 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            <div className="h-5 w-5 flex-shrink-0">
+              {theme === 'dark' ? (
+                <Sun className="h-5 w-5 text-amber-400" />
+              ) : (
+                <Moon className="h-5 w-5 text-slate-600" />
+              )}
+            </div>
+            <AnimatePresence>
+              {isOpen && (
+                <motion.span
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: 'auto' }}
+                  exit={{ opacity: 0, width: 0 }}
+                  className="whitespace-nowrap overflow-hidden"
+                >
+                  {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </motion.div>
+
         </nav>
 
         {/* Bottom Section */}
