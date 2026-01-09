@@ -437,3 +437,169 @@ class ReminderService:
             await self.db.commit()
         
         return missed_count
+    
+    async def get_daily_adherence(
+        self, user_id: int, days: int = 7
+    ) -> List[dict]:
+        """Get daily adherence data for the past N days"""
+        today = date.today()
+        result = []
+        
+        for i in range(days - 1, -1, -1):
+            day_date = today - timedelta(days=i)
+            start_datetime = datetime.combine(day_date, time.min)
+            end_datetime = datetime.combine(day_date, time.max)
+            
+            # Get all logs for this day
+            query = select(ReminderLog).join(Reminder).where(
+                and_(
+                    Reminder.user_id == user_id,
+                    ReminderLog.scheduled_time >= start_datetime,
+                    ReminderLog.scheduled_time <= end_datetime
+                )
+            )
+            
+            query_result = await self.db.execute(query)
+            logs = query_result.scalars().all()            
+            taken = sum(1 for log in logs if log.status == ReminderStatus.TAKEN.value)
+            skipped = sum(1 for log in logs if log.status == ReminderStatus.SKIPPED.value)
+            missed = sum(1 for log in logs if log.status == ReminderStatus.MISSED.value)
+            total = len(logs)
+            
+            # Calculate adherence for this day
+            adherence_rate = (taken / total * 100) if total > 0 else 100 if total == 0 else 0
+            
+            # Get day name
+            day_name = day_date.strftime("%a")
+            
+            result.append({
+                "date": day_date.isoformat(),
+                "day": day_name,
+                "scheduled": total,
+                "taken": taken,
+                "skipped": skipped,
+                "missed": missed,
+                "adherence_rate": round(adherence_rate, 2)
+            })
+        
+        return result
+    
+    async def get_adherence_streak(self, user_id: int) -> dict:
+        """Calculate current and longest adherence streak"""
+        today = date.today()
+        current_streak = 0
+        longest_streak = 0
+        last_perfect_date = None
+        
+        # Check the past 365 days for streaks
+        for i in range(365, -1, -1):
+            check_date = today - timedelta(days=i)
+            start_datetime = datetime.combine(check_date, time.min)
+            end_datetime = datetime.combine(check_date, time.max)
+            
+            query = select(ReminderLog).join(Reminder).where(
+                and_(
+                    Reminder.user_id == user_id,
+                    ReminderLog.scheduled_time >= start_datetime,
+                    ReminderLog.scheduled_time <= end_datetime
+                )
+            )
+            
+            result = await self.db.execute(query)
+            logs = result.scalars().all()
+            
+            if not logs:
+                # No reminders scheduled for this day, skip it
+                continue
+            
+            taken = sum(1 for log in logs if log.status == ReminderStatus.TAKEN.value)
+            total = len(logs)
+            
+            # Perfect day means all scheduled reminders were taken
+            if taken == total and total > 0:
+                current_streak += 1
+                if current_streak > longest_streak:
+                    longest_streak = current_streak
+                last_perfect_date = check_date.isoformat()
+            elif i == 0:
+                # Today might not be complete yet, don't break streak
+                continue
+            else:
+                # Check if this is today - if so, we might just not have logs yet
+                if check_date == today:
+                    continue
+                # Reset streak on a non-perfect day
+                current_streak = 0
+        
+        return {
+            "current_streak": current_streak,
+            "longest_streak": longest_streak,
+            "last_taken_date": last_perfect_date
+        }
+    
+    async def get_medicine_adherence(
+        self, user_id: int, start_date: date, end_date: date
+    ) -> dict:
+        """Get adherence breakdown by medicine"""
+        start_datetime = datetime.combine(start_date, time.min)
+        end_datetime = datetime.combine(end_date, time.max)
+        
+        # Get all logs in range with medicine info
+        query = select(ReminderLog).join(Reminder).join(Medicine).where(
+            and_(
+                Reminder.user_id == user_id,
+                ReminderLog.scheduled_time >= start_datetime,
+                ReminderLog.scheduled_time <= end_datetime
+            )
+        ).options(selectinload(ReminderLog.reminder).selectinload(Reminder.medicine))
+        
+        result = await self.db.execute(query)
+        logs = result.scalars().all()
+        
+        # Group by medicine
+        medicine_stats = {}
+        for log in logs:
+            medicine_id = log.reminder.medicine_id
+            medicine_name = log.reminder.medicine.name if log.reminder.medicine else "Unknown"
+            
+            if medicine_id not in medicine_stats:
+                medicine_stats[medicine_id] = {
+                    "medicine_id": medicine_id,
+                    "medicine_name": medicine_name,
+                    "total_scheduled": 0,
+                    "taken": 0,
+                    "skipped": 0,
+                    "missed": 0
+                }
+            
+            medicine_stats[medicine_id]["total_scheduled"] += 1
+            if log.status == ReminderStatus.TAKEN.value:
+                medicine_stats[medicine_id]["taken"] += 1
+            elif log.status == ReminderStatus.SKIPPED.value:
+                medicine_stats[medicine_id]["skipped"] += 1
+            elif log.status == ReminderStatus.MISSED.value:
+                medicine_stats[medicine_id]["missed"] += 1
+        
+        # Calculate adherence rates
+        medicines = []
+        total_taken = 0
+        total_scheduled = 0
+        
+        for stats in medicine_stats.values():
+            stats["adherence_rate"] = round(
+                (stats["taken"] / stats["total_scheduled"] * 100) if stats["total_scheduled"] > 0 else 0,
+                2
+            )
+            medicines.append(stats)
+            total_taken += stats["taken"]
+            total_scheduled += stats["total_scheduled"]
+        
+        # Sort by adherence rate descending
+        medicines.sort(key=lambda x: x["adherence_rate"], reverse=True)
+        
+        overall_adherence = (total_taken / total_scheduled * 100) if total_scheduled > 0 else 0
+        
+        return {
+            "medicines": medicines,
+            "overall_adherence": round(overall_adherence, 2)
+        }

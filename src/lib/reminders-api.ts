@@ -104,6 +104,37 @@ export interface AdherenceStats {
   adherence_rate: number;
 }
 
+export interface DailyAdherenceData {
+  date: string;
+  day: string;
+  scheduled: number;
+  taken: number;
+  skipped: number;
+  missed: number;
+  adherence_rate: number;
+}
+
+export interface DayStreak {
+  current_streak: number;
+  longest_streak: number;
+  last_taken_date: string | null;
+}
+
+export interface MedicineAdherence {
+  medicine_id: number;
+  medicine_name: string;
+  total_scheduled: number;
+  taken: number;
+  skipped: number;
+  missed: number;
+  adherence_rate: number;
+}
+
+export interface MedicineAdherenceResponse {
+  medicines: MedicineAdherence[];
+  overall_adherence: number;
+}
+
 export interface ReminderHistoryItem {
   id: number;
   medicine_name: string;
@@ -171,6 +202,18 @@ export const remindersApi = {
   // Get adherence statistics
   getAdherenceStats: (startDate: string, endDate: string): Promise<AxiosResponse<AdherenceStats>> =>
     api.get<AdherenceStats>('/reminders/adherence/stats', { params: { start_date: startDate, end_date: endDate } }),
+
+  // Get daily adherence data for chart
+  getDailyAdherence: (days: number = 7): Promise<AxiosResponse<DailyAdherenceData[]>> =>
+    api.get<DailyAdherenceData[]>('/reminders/adherence/daily', { params: { days } }),
+
+  // Get adherence streak
+  getAdherenceStreak: (): Promise<AxiosResponse<DayStreak>> =>
+    api.get<DayStreak>('/reminders/adherence/streak'),
+
+  // Get adherence breakdown by medicine
+  getMedicineAdherence: (startDate: string, endDate: string): Promise<AxiosResponse<MedicineAdherenceResponse>> =>
+    api.get<MedicineAdherenceResponse>('/reminders/adherence/by-medicine', { params: { start_date: startDate, end_date: endDate } }),
 
   // Get reminder history
   getHistory: (params: ReminderHistoryParams): Promise<AxiosResponse<ReminderHistoryResponse>> =>

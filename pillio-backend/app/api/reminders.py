@@ -460,4 +460,70 @@ async def get_adherence_stats(
         )
 
 
+@router.get("/adherence/daily")
+async def get_daily_adherence(
+    days: int = Query(7, ge=1, le=365, description="Number of days to fetch"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    reminder_service: ReminderService = Depends(get_reminder_service)
+):
+    """Get daily adherence data for the past N days"""
+    try:
+        daily_data = await reminder_service.get_daily_adherence(
+            user_id=current_user.id,
+            days=days
+        )
+        return daily_data
+    except Exception as e:
+        logger.error(f"Error fetching daily adherence: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch daily adherence data"
+        )
+
+
+@router.get("/adherence/streak")
+async def get_adherence_streak(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    reminder_service: ReminderService = Depends(get_reminder_service)
+):
+    """Get current and longest adherence streak"""
+    try:
+        streak = await reminder_service.get_adherence_streak(
+            user_id=current_user.id
+        )
+        return streak
+    except Exception as e:
+        logger.error(f"Error fetching adherence streak: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch adherence streak"
+        )
+
+
+@router.get("/adherence/by-medicine")
+async def get_medicine_adherence(
+    start_date: date = Query(..., description="Start date"),
+    end_date: date = Query(..., description="End date"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    reminder_service: ReminderService = Depends(get_reminder_service)
+):
+    """Get adherence breakdown by medicine"""
+    try:
+        medicine_stats = await reminder_service.get_medicine_adherence(
+            user_id=current_user.id,
+            start_date=start_date,
+            end_date=end_date
+        )
+        return medicine_stats
+    except Exception as e:
+        logger.error(f"Error fetching medicine adherence: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch medicine adherence data"
+        )
+
+
 

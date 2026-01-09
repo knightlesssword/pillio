@@ -78,9 +78,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Adherence Chart */}
-      <motion.div variants={itemVariants}>
+      {/* <motion.div variants={itemVariants}>
         <AdherenceChart />
-      </motion.div>
+      </motion.div> */}
     </motion.div>
   );
 }
