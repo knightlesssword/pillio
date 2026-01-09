@@ -23,6 +23,27 @@ export interface ApiMedicineWithDetails extends ApiMedicine {
   stock_level: string;
 }
 
+// Medicine dropdown item for prescription form
+export interface MedicineDropdownItem {
+  id: number;
+  name: string;
+  dosage: string;
+  form: string;
+  unit: string;
+}
+
+// Missing medicine from prescriptions
+export interface MissingMedicineItem {
+  id: number;
+  medicine_name: string;
+  dosage: string;
+  frequency: string;
+  duration_days: number;
+  instructions: string | null;
+  prescriptions_count: number;
+  prescription_id: number;
+}
+
 export interface MedicineCreate {
   name: string;
   generic_name?: string;
@@ -124,6 +145,18 @@ export const medicinesApi = {
   // Get inventory history
   getHistory: (id: number): Promise<AxiosResponse<InventoryHistory[]>> =>
     api.get<InventoryHistory[]>(`/medicines/${id}/history`),
+
+  // Get medicines for prescription dropdown
+  getForPrescription: (search?: string): Promise<AxiosResponse<MedicineDropdownItem[]>> =>
+    api.get<MedicineDropdownItem[]>('/medicines/for-prescription', { params: { search } }),
+
+  // Get medicines missing from inventory (from prescriptions)
+  getMissingFromInventory: (): Promise<AxiosResponse<MissingMedicineItem[]>> =>
+    api.get<MissingMedicineItem[]>('/medicines/missing-from-inventory'),
+
+  // Create medicine from prescription medicine
+  addFromPrescription: (prescriptionMedicineId: number, data: MedicineCreate): Promise<AxiosResponse<ApiMedicine>> =>
+    api.post<ApiMedicine>('/medicines/from-prescription', data, { params: { prescription_medicine_id: prescriptionMedicineId } }),
 };
 
 export default medicinesApi;

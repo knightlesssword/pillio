@@ -9,72 +9,86 @@ This plan outlines improvements to create better integration between Prescriptio
 
 ---
 
+## Progress Summary
+
+### ✅ Completed
+
+| Item | Status | File |
+|------|--------|------|
+| GET /medicines/for-prescription endpoint | Done | `pillio-backend/app/api/medicines.py:183-224` |
+| GET /medicines/missing-from-inventory endpoint | Done | `pillio-backend/app/api/medicines.py:227-281` |
+| MedicineDropdownItem schema (backend) | Done | `pillio-backend/app/api/medicines.py:45-51` |
+| MissingMedicineItem schema (backend) | Done | `pillio-backend/app/api/medicines.py:54-63` |
+| MedicineDropdownItem interface (frontend) | Done | `src/lib/medicines-api.ts:26-33` |
+| MissingMedicineItem interface (frontend) | Done | `src/lib/medicines-api.ts:35-45` |
+| getForPrescription API method | Done | `src/lib/medicines-api.ts:149-151` |
+| getMissingFromInventory API method | Done | `src/lib/medicines-api.ts:153-155` |
+
+### 🔄 In Progress
+
+| Item | File |
+|------|------|
+| POST /medicines/from-prescription endpoint | `pillio-backend/app/api/medicines.py` |
+| add_prescription_medicine_to_inventory service method | `pillio-backend/app/services/medicine_service.py` |
+
+### ⏳ Remaining
+
+| Item | File |
+|------|------|
+| MedicineSelect.tsx component | `src/components/medicine/MedicineSelect.tsx` |
+| MissingMedicineCard.tsx component | `src/components/medicine/MissingMedicineCard.tsx` |
+| addToInventoryFromPrescription API method | `src/lib/medicines-api.ts` |
+| Update PrescriptionFormDialog.tsx | `src/components/prescription/PrescriptionFormDialog.tsx` |
+| Update MedicinesPage.tsx | `src/pages/MedicinesPage.tsx` |
+
+---
+
 ## Part 1: Prescription Form - Medicine Selection Dropdown
 
-### 1.1 Backend API
+### 1.1 Backend (Done)
 
-#### Option A: Use existing search endpoint (Simpler)
-The existing [`GET /medicines/search`](pillio-backend/app/api/medicines.py:127) endpoint already supports searching medicines.
+The following are already implemented:
+- [`GET /medicines/for-prescription`](pillio-backend/app/api/medicines.py:183) endpoint
+- `MedicineDropdownItem` schema
 
-**Usage:**
-```
-GET /medicines/search?q=asp
-```
+### 1.2 Frontend Component: MedicineSelect.tsx
 
-Returns list of medicines matching the query.
-
-#### Option B: Add dedicated endpoint for dropdown (Better UX)
-Add new endpoint with simpler response for dropdowns:
-
-**New Endpoint:**
-```python
-@router.get("/for-prescription", response_model=list[MedicineDropdownItem])
-async def get_medicines_for_prescription(
-    search: Optional[str] = Query(None),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Get medicines formatted for prescription dropdown"""
-```
-
-**Response Schema:**
-```python
-class MedicineDropdownItem(BaseModel):
-    id: int
-    name: str
-    dosage: str  # e.g., "500mg"
-    form: str    # e.g., "tablet"
-```
-
-### 1.2 Frontend - Medicine Selection Component
-
-#### New Component: `MedicineSelect.tsx`
+**New Component:** `src/components/medicine/MedicineSelect.tsx`
 
 ```typescript
 interface MedicineSelectProps {
-  value: string; // medicine_id as string
+  value: string;
   onChange: (value: string, medicine?: MedicineDropdownItem) => void;
-  existingMedicines?: MedicineDropdownItem[];
-  selectedId?: number;
+  placeholder?: string;
 }
 
 function MedicineSelect({ 
   value, 
   onChange, 
-  existingMedicines,
-  selectedId 
+  placeholder = "Search medicines..." 
 }: MedicineSelectProps) {
   const [search, setSearch] = useState('');
   const [results, setResults] = useState<MedicineDropdownItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Search medicines when typing
+  // Search medicines when typing (debounced)
   useEffect(() => {
-    if (search.length >= 2) {
-      medicinesApi.search(search).then(res => setResults(res.data));
-    } else {
-      setResults([]);
-    }
+    const timer = setTimeout(async () => {
+      if (search.length >= 2) {
+        setIsLoading(true);
+        try {
+          const res = await medicinesApi.getForPrescription(search);
+          setResults(res.data);
+        } finally {
+          setIsLoading(false);
+        }
+      } else {
+        setResults([]);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
   }, [search]);
 
   return (
@@ -85,43 +99,40 @@ function MedicineSelect({
           setSearch(e.target.value);
           onChange(e.target.value);
         }}
-        placeholder="Search medicines..."
+        placeholder={placeholder}
         onFocus={() => setIsOpen(true)}
       />
       
-      {isOpen && results.length > 0 && (
-        <div className="absolute z-10 w-full border rounded-md bg-popover">
-          {results.map((med) => (
-            <div
-              key={med.id}
-              className="px-4 py-2 hover:bg-accent cursor-pointer"
-              onClick={() => {
-                onChange(String(med.id), med);
-                setSearch(`${med.name} - ${med.dosage}`);
-                setIsOpen(false);
-              }}
-            >
-              <div className="font-medium">{med.name}</div>
-              <div className="text-sm text-muted-foreground">
-                {med.dosage} - {med.form}
-              </div>
+      {isOpen && (search.length >= 2) && (
+        <div className="absolute z-10 w-full border rounded-md bg-popover mt-1 max-h-60 overflow-auto">
+          {isLoading ? (
+            <div className="p-4 text-center text-muted-foreground">
+              Searching...
             </div>
-          ))}
+          ) : results.length > 0 ? (
+            results.map((med) => (
+              <div
+                key={med.id}
+                className="px-4 py-2 hover:bg-accent cursor-pointer"
+                onClick={() => {
+                  onChange(String(med.id), med);
+                  setSearch(`${med.name} - ${med.dosage}`);
+                  setIsOpen(false);
+                }}
+              >
+                <div className="font-medium">{med.name}</div>
+                <div className="text-sm text-muted-foreground">
+                  {med.dosage} - {med.form}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="p-4 text-center text-muted-foreground">
+              No medicines found
+            </div>
+          )}
         </div>
       )}
-      
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={() => {
-          // Clear selection, switch to manual entry
-          onChange('');
-          setSearch('');
-        }}
-      >
-        Manual Entry
-      </Button>
     </div>
   );
 }
@@ -132,27 +143,20 @@ function MedicineSelect({
 **File:** [`src/components/prescription/PrescriptionFormDialog.tsx`](src/components/prescription/PrescriptionFormDialog.tsx)
 
 **Changes:**
-1. Add state for medicines list (fetched from API)
-2. Add `MedicineSelect` component for each medicine entry
-3. When medicine selected from dropdown:
+1. Import `MedicineSelect` component and `MedicineDropdownItem` type
+2. Add state for selected medicine details per medicine entry
+3. Replace medicine name Input with `MedicineSelect` component
+4. When medicine selected from dropdown:
    - Set `medicine_id` field
    - Auto-fill `medicine_name` from selected medicine
    - Auto-fill `dosage` from selected medicine
-4. Allow manual override (user can change the auto-filled values)
-5. When manual entry (no medicine_id):
-   - `medicine_id` = null
-   - `medicine_name` = user-entered value
+5. Allow manual override (user can change the auto-filled values)
 
 **Medicine Entry State:**
 ```typescript
-interface MedicineEntry {
-  id?: number;              // prescription_medicine.id (for editing)
-  medicine_id?: number | null; // links to medicines.id (null = manual entry)
-  medicine_name: string;
-  dosage: string;
-  frequency: string;
-  duration_days: number;
-  instructions?: string;
+interface MedicineEntry extends PrescriptionMedicineCreate {
+  medicine_id?: number | null;
+  selectedMedicine?: MedicineDropdownItem | null;
 }
 ```
 
@@ -160,51 +164,50 @@ interface MedicineEntry {
 
 ## Part 2: Medicines Page - Missing from Inventory
 
-### 2.1 Backend - Get Prescription Medicines Not in Inventory
+### 2.1 Backend - Create Medicine from Prescription
 
 **New Endpoint:**
 ```python
-@router.get("/missing-from-inventory", response_model=list[PrescriptionMedicineResponse])
-async def get_missing_from_inventory(
+@router.post("/from-prescription", response_model=MedicineSchema)
+async def create_medicine_from_prescription(
+    prescription_medicine_id: int = Query(..., description="Prescription medicine ID"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    medicine_service: MedicineService = Depends(get_medicine_service)
 ):
     """
-    Get prescription medicines that are not in the user's inventory.
-    Useful for identifying medicines to add.
+    Create a medicine in inventory from a prescription medicine.
+    Links all matching prescription medicines to the new inventory medicine.
     """
 ```
 
-**SQL Query Logic:**
+**Service Method:**
 ```python
-# Get prescription medicines where medicine_id is null
-# OR where medicine_id exists but medicine was deleted/hidden
-# Group by unique medicine_name + dosage combinations
+async def add_prescription_medicine_to_inventory(
+    self,
+    user_id: int,
+    prescription_medicine_id: int,
+    medicine_data: MedicineCreate
+) -> Medicine:
+    """Create medicine from prescription and link it"""
+    # 1. Create medicine in inventory
+    medicine = await self.create_medicine(user_id, medicine_data)
+    
+    # 2. Find all prescription medicines with same name + dosage
+    # 3. Update them to link to new medicine
+    # 4. Commit changes
+    
+    return medicine
 ```
 
-**Response:**
-```json
-[
-  {
-    "id": 1,
-    "prescription_id": 10,
-    "medicine_id": null,
-    "medicine_name": "Amoxicillin",
-    "dosage": "500mg",
-    "frequency": "Twice daily",
-    "duration_days": 7,
-    "instructions": "Take with food",
-    "prescriptions_count": 2  // Appears in 2 prescriptions
-  }
-]
-```
+### 2.2 Frontend Component: MissingMedicineCard.tsx
 
-### 2.2 New Component: `MissingMedicineCard.tsx`
+**New Component:** `src/components/medicine/MissingMedicineCard.tsx`
 
 ```typescript
 interface MissingMedicineCardProps {
-  medicine: MissingMedicine;
-  onAddToInventory: (medicine: MissingMedicine) => void;
+  medicine: MissingMedicineItem;
+  onAddToInventory: (medicine: MissingMedicineItem) => void;
   onHide: (id: number) => void;
 }
 
@@ -252,14 +255,21 @@ function MissingMedicineCard({
 **Add new section:**
 ```typescript
 // Fetch missing medicines
-const { data: missingMedicines } = useQuery({
+const { data: missingMedicines, refetch: refetchMissing } = useQuery({
   queryKey: ['missing-from-inventory'],
   queryFn: () => medicinesApi.getMissingFromInventory(),
 });
 
+// Handle add to inventory
+const handleAddToInventory = async (medicine: MissingMedicineItem) => {
+  // Show MedicineFormDialog with pre-filled data
+  setPendingMissingMedicine(medicine);
+  setFormDialogOpen(true);
+};
+
 // Show section if there are missing medicines
 {missingMedicines?.length > 0 && (
-  <div className="space-y-4">
+  <div className="space-y-4 mt-8">
     <h2 className="text-lg font-semibold">
       Missing from Inventory ({missingMedicines.length})
     </h2>
@@ -278,33 +288,6 @@ const { data: missingMedicines } = useQuery({
     </div>
   </div>
 )}
-```
-
-### 2.4 "Add to Inventory" Logic
-
-When user clicks "Add to Inventory":
-1. Pre-fill the Medicine form with prescription medicine data
-2. Show confirmation dialog
-3. Create medicine in inventory
-4. Update all prescription medicines to link to new medicine_id
-
-**Backend Service Method:**
-```python
-async def add_prescription_medicine_to_inventory(
-    self,
-    user_id: int,
-    prescription_medicine: PrescriptionMedicine,
-    medicine_data: MedicineCreate
-) -> Medicine:
-    """Create medicine from prescription and link it"""
-    # 1. Create medicine in inventory
-    medicine = await self.create_medicine(user_id, medicine_data)
-    
-    # 2. Update prescription medicine to link to new medicine
-    prescription_medicine.medicine_id = medicine.id
-    await self.db.commit()
-    
-    return medicine
 ```
 
 ---
@@ -347,9 +330,9 @@ flowchart TD
 
 | File | Changes |
 |------|---------|
-| `pillio-backend/app/api/medicines.py` | Add `/for-prescription` and `/missing-from-inventory` endpoints |
-| `pillio-backend/app/services/medicine_service.py` | Add method to link prescription medicines |
-| `src/lib/medicines-api.ts` | Add new API methods |
+| `pillio-backend/app/api/medicines.py` | Add POST /from-prescription endpoint |
+| `pillio-backend/app/services/medicine_service.py` | Add add_prescription_medicine_to_inventory method |
+| `src/lib/medicines-api.ts` | Add addToInventoryFromPrescription method |
 | `src/components/prescription/PrescriptionFormDialog.tsx` | Add medicine dropdown selection |
 | `src/pages/MedicinesPage.tsx` | Add 'Missing from Inventory' section |
 
@@ -358,13 +341,12 @@ flowchart TD
 ## API Endpoints Summary
 
 ### Existing (reuse)
-- `GET /medicines/search?q=` - Search medicines for dropdown
+- `GET /medicines/for-prescription` - Get medicines formatted for dropdown
+- `GET /medicines/missing-from-inventory` - Get prescription medicines not in inventory
 
 ### New Endpoints
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/medicines/for-prescription` | Get medicines formatted for dropdown |
-| GET | `/medicines/missing-from-inventory` | Get prescription medicines not in inventory |
 | POST | `/medicines/from-prescription` | Create medicine from prescription medicine |
 
 ---
@@ -382,10 +364,9 @@ flowchart TD
 ### Scenario 2: Adding Prescription with New Medicine
 1. User clicks "Add Medicine" in prescription form
 2. Medicine not found in dropdown
-3. User clicks "Manual Entry"
-4. User types: "New Medicine" as name
-5. User enters dosage: "100mg"
-6. Prescription saved with `medicine_id = null`
+3. User types medicine name manually
+4. User enters dosage: "100mg"
+5. Prescription saved with `medicine_id = null`
 
 ### Scenario 3: Adding Missing Medicine to Inventory
 1. User visits Medicines Page

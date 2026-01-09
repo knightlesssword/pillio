@@ -5,6 +5,7 @@ from sqlalchemy import select, func, and_, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import SQLAlchemyError
 from app.models.medicine import Medicine
+from app.models.prescription_medicine import PrescriptionMedicine
 from app.models.inventory_history import InventoryHistory
 from app.schemas.medicine import MedicineCreate, MedicineUpdate, MedicineFilter
 from app.core.exceptions import (
@@ -526,4 +527,80 @@ class MedicineService:
         except Exception as e:
             await self.db.rollback()
             logger.error(f"Unexpected error creating inventory history for medicine {medicine_id}: {e}")
+            raise
+    
+    async def add_prescription_medicine_to_inventory(
+        self,
+        user_id: int,
+        prescription_medicine_id: int,
+        medicine_data: MedicineCreate
+    ) -> Medicine:
+        """
+        Create a medicine in inventory from a prescription medicine.
+        Links all matching prescription medicines to the new inventory medicine.
+        
+        Args:
+            user_id: User ID
+            prescription_medicine_id: The prescription medicine ID to base the new medicine on
+            medicine_data: Medicine creation data
+            
+        Returns:
+            Created medicine object
+        """
+        logger.info(f"Creating medicine from prescription medicine {prescription_medicine_id} for user {user_id}")
+        
+        try:
+            # Get the prescription medicine to get original details
+            result = await self.db.execute(
+                select(PrescriptionMedicine).where(
+                    and_(
+                        PrescriptionMedicine.id == prescription_medicine_id,
+                        PrescriptionMedicine.medicine_id.is_(None)
+                    )
+                )
+            )
+            prescription_medicine = result.scalar_one_or_none()
+            
+            if not prescription_medicine:
+                logger.warning(f"Prescription medicine {prescription_medicine_id} not found or already linked")
+                raise MedicineNotFoundException(prescription_medicine_id)
+            
+            # Create medicine in inventory
+            medicine = await self.create_medicine(user_id, medicine_data)
+            
+            # Find all prescription medicines with same name + dosage for this user
+            # and link them to the new medicine
+            from app.models.prescription import Prescription
+            
+            # Get all prescriptions for this user that have matching medicines
+            result = await self.db.execute(
+                select(PrescriptionMedicine)
+                .join(Prescription)
+                .where(
+                    and_(
+                        Prescription.user_id == user_id,
+                        PrescriptionMedicine.medicine_id.is_(None),
+                        func.lower(PrescriptionMedicine.medicine_name) == func.lower(prescription_medicine.medicine_name),
+                        func.lower(PrescriptionMedicine.dosage) == func.lower(prescription_medicine.dosage)
+                    )
+                )
+            )
+            matching_medicines = result.scalars().all()
+            
+            # Link all matching prescription medicines to the new inventory medicine
+            for pm in matching_medicines:
+                pm.medicine_id = medicine.id
+            
+            await self.db.commit()
+            
+            logger.info(f"Medicine created from prescription (ID: {medicine.id}) and linked to {len(matching_medicines)} prescription medicines")
+            return medicine
+            
+        except SQLAlchemyError as e:
+            await self.db.rollback()
+            logger.error(f"Database error creating medicine from prescription: {e}")
+            raise
+        except Exception as e:
+            await self.db.rollback()
+            logger.error(f"Unexpected error creating medicine from prescription: {e}")
             raise

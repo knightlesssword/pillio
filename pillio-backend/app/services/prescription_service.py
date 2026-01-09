@@ -311,7 +311,9 @@ class PrescriptionService:
                         dosage=medicine_data.dosage,
                         frequency=medicine_data.frequency,
                         duration_days=medicine_data.duration_days,
-                        instructions=medicine_data.instructions
+                        instructions=medicine_data.instructions,
+                        created_at=datetime.now(),
+                        updated_at=datetime.now()
                     )
                     self.db.add(prescription_medicine)
             

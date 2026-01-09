@@ -66,6 +66,7 @@ export interface PrescriptionUpdate {
   valid_until?: string;
   notes?: string;
   is_active?: boolean;
+  medicines?: PrescriptionMedicineCreate[];
 }
 
 // Prescription filter

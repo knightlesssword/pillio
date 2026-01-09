@@ -1,13 +1,18 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func, and_
 from sqlalchemy.orm import selectinload
 import logging
+from pydantic import BaseModel
 from app.database import get_db
 from app.core.security import get_current_user
 from app.services.medicine_service import MedicineService
+from app.services.prescription_service import PrescriptionService
 from app.models.user import User
+from app.models.medicine import Medicine
+from app.models.prescription import Prescription
+from app.models.prescription_medicine import PrescriptionMedicine
 from app.models.inventory_history import InventoryHistory
 from app.schemas.medicine import (
     Medicine as MedicineSchema, 
@@ -31,6 +36,32 @@ router = APIRouter()
 def get_medicine_service(db: AsyncSession = Depends(get_db)) -> MedicineService:
     """Dependency to get medicine service"""
     return MedicineService(db)
+
+
+def get_prescription_service(db: AsyncSession = Depends(get_db)) -> PrescriptionService:
+    """Dependency to get prescription service"""
+    return PrescriptionService(db)
+
+
+# Schema for medicine dropdown item
+class MedicineDropdownItem(BaseModel):
+    id: int
+    name: str
+    dosage: str
+    form: str
+    unit: str
+
+
+# Schema for missing medicine from prescriptions
+class MissingMedicineItem(BaseModel):
+    id: int
+    medicine_name: str
+    dosage: str
+    frequency: str
+    duration_days: int
+    instructions: Optional[str] = None
+    prescriptions_count: int = 1
+    prescription_id: int  # For linking back
 
 
 @router.post("/", response_model=MedicineSchema, status_code=status.HTTP_201_CREATED)
@@ -147,6 +178,152 @@ async def search_medicines(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Search failed"
+        )
+
+
+@router.get("/for-prescription", response_model=list[MedicineDropdownItem])
+async def get_medicines_for_prescription(
+    search: Optional[str] = Query(None, description="Search query"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    medicine_service: MedicineService = Depends(get_medicine_service)
+):
+    """
+    Get medicines formatted for prescription dropdown selection.
+    Returns simplified list with id, name, dosage, form, and unit.
+    """
+    try:
+        query = select(Medicine).where(Medicine.user_id == current_user.id)
+        
+        if search:
+            search_term = f"%{search.lower()}%"
+            query = query.where(
+                func.lower(Medicine.name).like(search_term)
+            )
+        
+        query = query.order_by(Medicine.name).limit(50)
+        
+        result = await db.execute(query)
+        medicines = result.scalars().all()
+        
+        return [
+            MedicineDropdownItem(
+                id=m.id,
+                name=m.name,
+                dosage=m.dosage,
+                form=m.form,
+                unit=m.unit
+            )
+            for m in medicines
+        ]
+    
+    except Exception as e:
+        logger.error(f"Error fetching medicines for prescription: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch medicines"
+        )
+
+
+@router.get("/missing-from-inventory", response_model=list[MissingMedicineItem])
+async def get_missing_from_inventory(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get prescription medicines that are not in the user's inventory.
+    Useful for identifying medicines that should be added to inventory.
+    """
+    try:
+        # Get prescription medicines where medicine_id is null
+        # or where the linked medicine no longer exists
+        query = (
+            select(PrescriptionMedicine)
+            .options(selectinload(PrescriptionMedicine.prescription))
+            .join(PrescriptionMedicine.prescription)
+            .where(
+                and_(
+                    PrescriptionMedicine.medicine_id.is_(None),
+                    Prescription.user_id == current_user.id,
+                    Prescription.is_active == True
+                )
+            )
+        )
+        
+        result = await db.execute(query)
+        prescription_medicines = result.scalars().all()
+        
+        # Group by unique medicine_name + dosage
+        seen = {}
+        for pm in prescription_medicines:
+            key = (pm.medicine_name.lower(), pm.dosage.lower())
+            if key not in seen:
+                seen[key] = {
+                    "id": pm.id,
+                    "medicine_name": pm.medicine_name,
+                    "dosage": pm.dosage,
+                    "frequency": pm.frequency,
+                    "duration_days": pm.duration_days,
+                    "instructions": pm.instructions,
+                    "prescriptions_count": 1,
+                    "prescription_id": pm.prescription_id
+                }
+            else:
+                seen[key]["prescriptions_count"] += 1
+        
+        return list(seen.values())
+    
+    except Exception as e:
+        logger.error(f"Error fetching missing medicines: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch missing medicines"
+        )
+
+
+@router.post("/from-prescription", response_model=MedicineSchema)
+async def create_medicine_from_prescription(
+    prescription_medicine_id: int = Query(..., description="Prescription medicine ID to create medicine from"),
+    medicine_data: MedicineCreate = ...,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    medicine_service: MedicineService = Depends(get_medicine_service)
+):
+    """
+    Create a medicine in inventory from a prescription medicine.
+    Links all matching prescription medicines (same name + dosage) to the new inventory medicine.
+    
+    The prescription medicine data is used as a template for the new medicine.
+    """
+    try:
+        medicine = await medicine_service.add_prescription_medicine_to_inventory(
+            user_id=current_user.id,
+            prescription_medicine_id=prescription_medicine_id,
+            medicine_data=medicine_data
+        )
+        
+        logger.info(f"Medicine created from prescription: '{medicine.name}' (ID: {medicine.id}) for user {current_user.id}")
+        return medicine
+    
+    except MedicineNotFoundException:
+        logger.warning(f"Prescription medicine {prescription_medicine_id} not found or already linked")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Prescription medicine not found or already linked to inventory"
+        )
+    
+    except MedicineAlreadyExistsException:
+        logger.warning(f"Medicine creation failed: '{medicine_data.name}' already exists for user {current_user.id}")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Medicine '{medicine_data.name}' already exists"
+        )
+    
+    except Exception as e:
+        logger.error(f"Error creating medicine from prescription: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create medicine from prescription"
         )
 
 

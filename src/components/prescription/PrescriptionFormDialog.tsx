@@ -4,11 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import prescriptionsApi, { 
   type PrescriptionWithMedicines, 
   type PrescriptionCreate, 
   type PrescriptionMedicineCreate 
 } from '@/lib/prescriptions-api';
+import { MedicineSelect } from '@/components/medicine/MedicineSelect';
+import { type MedicineDropdownItem } from '@/lib/medicines-api';
 import { Loader2, Plus, Trash2, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/api';
@@ -18,6 +21,11 @@ interface PrescriptionFormDialogProps {
   onOpenChange: (open: boolean) => void;
   prescription?: PrescriptionWithMedicines | null;
   onSuccess: () => void;
+}
+
+interface MedicineEntry extends PrescriptionMedicineCreate {
+  medicine_id?: number | null;
+  selectedMedicine?: MedicineDropdownItem | null;
 }
 
 const EMPTY_MEDICINE: PrescriptionMedicineCreate = {
@@ -66,8 +74,9 @@ export function PrescriptionFormDialog({
     prescription_date: new Date().toISOString().split('T')[0],
     valid_until: '',
     notes: '',
+    is_active: true,
   });
-  const [medicines, setMedicines] = useState<PrescriptionMedicineCreate[]>([{ ...EMPTY_MEDICINE }]);
+  const [medicines, setMedicines] = useState<MedicineEntry[]>([{ ...EMPTY_MEDICINE }]);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
@@ -81,11 +90,12 @@ export function PrescriptionFormDialog({
         prescription_date: prescription.prescription_date.split('T')[0],
         valid_until: prescription.valid_until ? prescription.valid_until.split('T')[0] : '',
         notes: prescription.notes || '',
+        is_active: prescription.is_active,
       });
       setMedicines(
         prescription.prescription_medicines.map((pm) => ({
           id: pm.id,
-          medicine_id: pm.medicine_id || undefined,
+          medicine_id: pm.medicine_id || null,
           medicine_name: pm.medicine_name,
           dosage: pm.dosage,
           frequency: pm.frequency,
@@ -100,6 +110,7 @@ export function PrescriptionFormDialog({
         prescription_date: new Date().toISOString().split('T')[0],
         valid_until: '',
         notes: '',
+        is_active: true,
       });
       setMedicines([{ ...EMPTY_MEDICINE }]);
     }
@@ -118,6 +129,24 @@ export function PrescriptionFormDialog({
   const handleMedicineChange = (index: number, field: keyof PrescriptionMedicineCreate, value: string | number) => {
     const updated = [...medicines];
     updated[index] = { ...updated[index], [field]: value };
+    setMedicines(updated);
+  };
+
+  const handleMedicineSelect = (index: number, value: string, medicine?: MedicineDropdownItem) => {
+    const updated = [...medicines];
+    updated[index].medicine_id = medicine ? Number(medicine.id) : null;
+    updated[index].selectedMedicine = medicine || undefined;
+    
+    if (medicine) {
+      // Auto-fill from selected medicine
+      updated[index].medicine_name = medicine.name;
+      updated[index].dosage = medicine.dosage;
+    } else {
+      // Manual entry - keep current values but clear selection
+      updated[index].medicine_name = value;
+      updated[index].selectedMedicine = undefined;
+    }
+    
     setMedicines(updated);
   };
 
@@ -157,6 +186,8 @@ export function PrescriptionFormDialog({
           prescription_date: form.prescription_date,
           valid_until: form.valid_until || undefined,
           notes: form.notes || undefined,
+          medicines: validMedicines,
+          is_active: form.is_active,
         });
         toast({ title: 'Prescription updated', description: 'Prescription has been updated.' });
       } else {
@@ -236,6 +267,15 @@ export function PrescriptionFormDialog({
                   onChange={(e) => setForm({ ...form, valid_until: e.target.value })}
                 />
               </div>
+
+              <div className="flex items-center space-x-2 pt-6">
+                <Switch
+                  id="is_active"
+                  checked={form.is_active}
+                  onCheckedChange={(checked) => setForm({ ...form, is_active: checked })}
+                />
+                <Label htmlFor="is_active">Active Prescription</Label>
+              </div>
             </div>
           </div>
 
@@ -278,12 +318,10 @@ export function PrescriptionFormDialog({
                   <div className="grid grid-cols-2 gap-3">
                     <div className="col-span-2">
                       <Label htmlFor={`medicine_name_${index}`}>Medicine Name *</Label>
-                      <Input
-                        id={`medicine_name_${index}`}
-                        value={medicine.medicine_name}
-                        onChange={(e) => handleMedicineChange(index, 'medicine_name', e.target.value)}
-                        placeholder="e.g., Amoxicillin"
-                        required
+                      <MedicineSelect
+                        value={medicine.medicine_name || ''}
+                        onChange={(value, med) => handleMedicineSelect(index, value, med)}
+                        placeholder="Search medicines..."
                       />
                     </div>
 

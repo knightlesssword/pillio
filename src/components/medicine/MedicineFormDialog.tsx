@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MedicineForm } from '@/types';
-import medicinesApi, { type MedicineCreate, type MedicineUpdate } from '@/lib/medicines-api';
+import medicinesApi, { type MedicineCreate, type MedicineUpdate, type MissingMedicineItem } from '@/lib/medicines-api';
 import { toMedicine, type Medicine } from '@/types';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -15,6 +15,7 @@ interface MedicineFormDialogProps {
   onOpenChange: (open: boolean) => void;
   medicine?: Medicine | null;
   onSuccess: () => void;
+  preFillFromPrescription?: MissingMedicineItem | null;
 }
 
 const INITIAL_FORM: MedicineForm = {
@@ -30,12 +31,19 @@ const INITIAL_FORM: MedicineForm = {
 const MEDICINE_FORMS = ['tablet', 'capsule', 'syrup', 'injection', 'cream', 'drops', 'inhaler', 'patch', 'other'];
 const UNITS = ['tablets', 'capsules', 'ml', 'mg', 'units', 'drops', 'grams', 'puffs'];
 
-export function MedicineFormDialog({ open, onOpenChange, medicine, onSuccess }: MedicineFormDialogProps) {
+export function MedicineFormDialog({ 
+  open, 
+  onOpenChange, 
+  medicine, 
+  onSuccess,
+  preFillFromPrescription 
+}: MedicineFormDialogProps) {
   const [form, setForm] = useState<MedicineForm>(INITIAL_FORM);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
   const isEditing = Boolean(medicine);
+  const isFromPrescription = Boolean(preFillFromPrescription);
 
   useEffect(() => {
     if (medicine) {
@@ -48,10 +56,21 @@ export function MedicineFormDialog({ open, onOpenChange, medicine, onSuccess }: 
         currentStock: medicine.currentStock,
         minimumStock: medicine.minimumStock,
       });
+    } else if (preFillFromPrescription) {
+      // Pre-fill from prescription medicine
+      setForm({
+        name: preFillFromPrescription.medicine_name,
+        genericName: '',
+        category: 'tablet', // Default, can be changed
+        dosage: preFillFromPrescription.dosage,
+        unit: 'tablets', // Default, can be changed
+        currentStock: 0,
+        minimumStock: 5,
+      });
     } else {
       setForm(INITIAL_FORM);
     }
-  }, [medicine, open]);
+  }, [medicine, preFillFromPrescription, open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,6 +90,22 @@ export function MedicineFormDialog({ open, onOpenChange, medicine, onSuccess }: 
         };
         await medicinesApi.update(Number(medicine.id), updateData);
         toast({ title: 'Medicine updated', description: `${form.name} has been updated.` });
+      } else if (isFromPrescription && preFillFromPrescription) {
+        // Create new medicine from prescription
+        const createData: MedicineCreate = {
+          name: form.name,
+          generic_name: form.genericName || undefined,
+          form: form.category,
+          dosage: form.dosage,
+          unit: form.unit,
+          current_stock: form.currentStock,
+          min_stock_alert: form.minimumStock,
+        };
+        await medicinesApi.addFromPrescription(preFillFromPrescription.id, createData);
+        toast({ 
+          title: 'Medicine added to inventory', 
+          description: `${form.name} has been added and linked to your prescriptions.`
+        });
       } else {
         // Create new medicine
         const createData: MedicineCreate = {
@@ -103,7 +138,14 @@ export function MedicineFormDialog({ open, onOpenChange, medicine, onSuccess }: 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>{isEditing ? 'Edit Medicine' : 'Add New Medicine'}</DialogTitle>
+          <DialogTitle>
+            {isFromPrescription 
+              ? 'Add to Inventory from Prescription' 
+              : isEditing 
+                ? 'Edit Medicine' 
+                : 'Add New Medicine'
+            }
+          </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
