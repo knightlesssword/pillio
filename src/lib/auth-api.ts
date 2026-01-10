@@ -50,6 +50,11 @@ export interface ChangePasswordRequest {
   new_password: string;
 }
 
+export interface DeleteAccountRequest {
+  password: string;
+  reason?: string;
+}
+
 export const authApi = {
   login: (data: LoginRequest): Promise<AxiosResponse<LoginResponse>> =>
     api.post<LoginResponse>('/auth/login', data),
@@ -80,6 +85,9 @@ export const authApi = {
 
   exportData: (): Promise<AxiosResponse<Blob>> =>
     api.get('/auth/export-data', { responseType: 'blob' }),
+
+  deleteAccount: (data: DeleteAccountRequest): Promise<AxiosResponse<void>> =>
+    api.post<void>('/auth/delete-account', data),
 };
 
 export default authApi;

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 import json
 import logging
@@ -16,7 +17,7 @@ from app.core.exceptions import (
     UserAlreadyExistsException, InvalidCredentialsException,
     InactiveUserException, UserNotFoundException
 )
-from app.utils.password import verify_password_reset_token
+from app.utils.password import verify_password_reset_token, verify_password
 
 logger = logging.getLogger(__name__)
 
@@ -453,4 +454,60 @@ async def export_user_data(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to export data"
+        )
+
+
+class DeleteAccountRequest(BaseModel):
+    password: str
+    reason: str = "User requested account deletion"
+
+
+@router.post("/delete-account")
+async def delete_account(
+    request: DeleteAccountRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Soft delete user account.
+    
+    Sets is_deleted to True and stores deletion reason with timestamp.
+    User has 14 days to restore account by logging in again.
+    
+    - **password**: Current password for verification
+    - **reason**: Reason for deletion (optional, defaults to standard message)
+    """
+    try:
+        # Verify password
+        if not verify_password(request.password, current_user.password_hash):
+            logger.warning(f"Delete account failed: Incorrect password for user {current_user.email}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Incorrect password"
+            )
+        
+        # Create deletion reason with timestamp
+        timestamp = datetime.utcnow().isoformat()
+        deletion_reason = f"[{timestamp}] {request.reason}"
+        
+        # Soft delete user
+        current_user.is_deleted = True
+        current_user.deletion_reason = deletion_reason
+        await db.commit()
+        
+        logger.info(f"Account soft deleted for user: {current_user.email}")
+        
+        return MessageResponse(
+            message="Account deleted successfully. You have 14 days to restore your account by logging in again.",
+            success=True
+        )
+    
+    except HTTPException:
+        raise
+    
+    except Exception as e:
+        logger.error(f"Delete account error for user {current_user.id}: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete account"
         )

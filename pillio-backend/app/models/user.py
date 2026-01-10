@@ -20,6 +20,10 @@ class User(BaseModel):
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
     
+    # Soft delete fields
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deletion_reason = Column(String(500), nullable=True)
+    
     # Relationships
     medicines = relationship("Medicine", back_populates="user", cascade="all, delete-orphan")
     prescriptions = relationship("Prescription", back_populates="user", cascade="all, delete-orphan")

@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
 import { ExportDataButton } from '@/components/settings/ExportDataButton';
+import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
 import { User, Bell, Shield, LogOut, Trash2, Database } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -116,13 +117,9 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground mb-4">
-              Permanently delete your account and all associated data. 
-              <br/>
-              This action cannot be undone.
+              Permanently delete your account and all associated data. You have 14 days to restore your account by logging in again.
             </p>
-            <Button variant="destructive">
-              Delete Account
-            </Button>
+            <DeleteAccountDialog />
           </CardContent>
         </Card>
       </div>

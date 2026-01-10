@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import timedelta, datetime
 from typing import Optional, Tuple
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -109,6 +109,27 @@ class AuthService:
             if not user.is_active:
                 logger.warning(f"Authentication failed: Account disabled for email {login_data.email}")
                 raise ValueError("User account is disabled")
+            
+            # Check if user was soft deleted and restore if within 14 days
+            if user.is_deleted and user.deletion_reason:
+                # Extract timestamp from deletion_reason (format: "[timestamp] reason")
+                try:
+                    timestamp_str = user.deletion_reason.split(']')[0].strip('[')
+                    deleted_at = datetime.fromisoformat(timestamp_str)
+                    days_since_deletion = (datetime.utcnow() - deleted_at).days
+                    
+                    if days_since_deletion < 14:
+                        # Restore the user account
+                        user.is_deleted = False
+                        user.deletion_reason = None
+                        await self.db.commit()
+                        logger.info(f"User account restored after soft delete: {login_data.email} ({days_since_deletion} days since deletion)")
+                    else:
+                        logger.warning(f"Authentication failed: Account deleted more than 14 days ago for email {login_data.email}")
+                        raise ValueError("This account has been deleted and cannot be restored")
+                except (ValueError, IndexError):
+                    logger.warning(f"Could not parse deletion_reason for user {login_data.email}, treating as permanently deleted")
+                    raise ValueError("This account has been deleted and cannot be restored")
             
             # Generate tokens
             tokens = await self.create_tokens_for_user(user)
