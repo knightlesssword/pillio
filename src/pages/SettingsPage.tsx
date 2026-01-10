@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
-import { User, Bell, Shield, LogOut, Trash2 } from 'lucide-react';
+import { ExportDataButton } from '@/components/settings/ExportDataButton';
+import { User, Bell, Shield, LogOut, Trash2, Database } from 'lucide-react';
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
@@ -72,6 +73,21 @@ export default function SettingsPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Database className="h-5 w-5" />
+              Data Management
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Download a copy of all your data including medicines, prescriptions, reminders, and notifications.
+            </p>
+            <ExportDataButton />
+          </CardContent>
+        </Card>
+
         <Card className="border-destructive/20">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-destructive">
@@ -88,7 +104,9 @@ export default function SettingsPage() {
             </Button>
           </CardContent>
         </Card>
+      </div>
 
+      <div className="grid gap-6 md:grid-cols-2">
         <Card className="border-destructive/20">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-destructive">
@@ -98,7 +116,9 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground mb-4">
-              Permanently delete your account and all associated data. This action cannot be undone.
+              Permanently delete your account and all associated data. 
+              <br/>
+              This action cannot be undone.
             </p>
             <Button variant="destructive">
               Delete Account

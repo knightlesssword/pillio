@@ -1,10 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+import json
 import logging
+from datetime import datetime
 from app.database import get_db
 from app.core.security import get_current_user
 from app.api.deps import get_auth_service_dep
 from app.services.auth_service import AuthService
+from app.services.export_service import ExportService
 from app.models.user import User
 from app.schemas.user import UserCreate, UserLogin, User as UserSchema, UserUpdate
 from app.schemas.common import Token, MessageResponse, PasswordReset, PasswordResetConfirm, RefreshTokenRequest
@@ -397,4 +401,56 @@ async def reset_password(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Password reset failed"
+        )
+
+
+@router.get("/export-data")
+async def export_user_data(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Export all user data as a JSON file.
+    
+    Returns a downloadable JSON file containing:
+    - User profile information
+    - All medicines
+    - All prescriptions (including prescription medicines)
+    - All reminders
+    - Reminder logs (history)
+    - All notifications
+    - Inventory history
+    """
+    try:
+        export_service = ExportService(db)
+        export_data = await export_service.export_user_data(user_id=current_user.id)
+        
+        # Generate filename with timestamp
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        filename = f"pillio_export_{timestamp}.json"
+        
+        logger.info(f"Data export completed for user: {current_user.email}")
+        
+        # Return as downloadable JSON file - pass dict directly for proper serialization
+        return JSONResponse(
+            content=export_data,
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Type": "application/json",
+                "Cache-Control": "no-cache",
+            }
+        )
+    
+    except ValueError as e:
+        logger.warning(f"Data export failed for user {current_user.id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    
+    except Exception as e:
+        logger.error(f"Data export error for user {current_user.id}: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to export data"
         )

@@ -77,6 +77,9 @@ export const authApi = {
 
   logout: (): Promise<AxiosResponse<void>> =>
     api.post<void>('/auth/logout'),
+
+  exportData: (): Promise<AxiosResponse<Blob>> =>
+    api.get('/auth/export-data', { responseType: 'blob' }),
 };
 
 export default authApi;
