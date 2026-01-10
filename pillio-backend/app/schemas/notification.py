@@ -1,7 +1,17 @@
 from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
+from enum import Enum
 from app.schemas.common import NotificationType
+
+
+class NotificationActionType(str, Enum):
+    """Types of actions users can take on notifications"""
+    TAKEN = "taken"      # ✓ Tick - User took the medicine
+    SKIPPED = "skipped"  # ✗ Cross - User skipped the medicine
+    SNOOZED = "snoozed"  # ⏰ Later - User snoozed the notification
+    DISMISSED = "dismissed"  # User dismissed the notification
+    VIEWED = "viewed"    # User viewed the related item
 
 
 # Base notification schema
@@ -21,6 +31,8 @@ class NotificationCreate(NotificationBase):
 # Notification update schema (for marking as read)
 class NotificationUpdate(BaseModel):
     is_read: Optional[bool] = None
+    action_taken: Optional[NotificationActionType] = None
+    action_time: Optional[datetime] = None
 
 
 # Notification response schema
@@ -28,6 +40,8 @@ class Notification(NotificationBase):
     id: int
     user_id: int
     is_read: bool
+    action_taken: Optional[NotificationActionType] = None
+    action_time: Optional[datetime] = None
     created_at: datetime
     
     class Config:
@@ -47,6 +61,7 @@ class NotificationFilter(BaseModel):
     type: Optional[NotificationType] = None
     is_read: Optional[bool] = None
     reference_type: Optional[str] = None
+    action_taken: Optional[NotificationActionType] = None
     page: int = Field(default=1, ge=1)
     per_page: int = Field(default=20, ge=1, le=100)
 
@@ -62,6 +77,12 @@ class NotificationCount(BaseModel):
 class BulkNotificationUpdate(BaseModel):
     notification_ids: list[int]
     is_read: bool
+
+
+# Notification action request (for tick/cross actions)
+class NotificationActionRequest(BaseModel):
+    action: NotificationActionType
+    notes: Optional[str] = None
 
 
 # Notification summary for dashboard

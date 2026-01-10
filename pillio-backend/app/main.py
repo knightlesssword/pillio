@@ -11,7 +11,9 @@ from app.api.users import router as users_router
 from app.api.medicines import router as medicines_router
 from app.api.prescriptions import router as prescriptions_router
 from app.api.reminders import router as reminders_router
+from app.api.notifications import router as notifications_router
 from app.api.search import router as search_router
+from app.core.scheduler import start_scheduler, stop_scheduler
 from app.core.exceptions import (
     AuthException, PermissionException, ValidationException,
     NotFoundException, ConflictException, BadRequestException
@@ -35,6 +37,10 @@ async def lifespan(app: FastAPI):
         settings.ensure_upload_dir_exists()
         logger.info("Upload directory ready")
         
+        # Start background scheduler
+        await start_scheduler()
+        logger.info("Background scheduler started")
+        
         logger.info(f"Pillio API started successfully on {settings.host}:{settings.port}")
         
     except Exception as e:
@@ -45,6 +51,10 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down Pillio API...")
+    
+    # Stop background scheduler
+    await stop_scheduler()
+    logger.info("Background scheduler stopped")
 
 
 # Create FastAPI application
@@ -157,6 +167,12 @@ app.include_router(
     search_router,
     prefix=f"{settings.api_v1_str}",
     tags=["Search"]
+)
+
+app.include_router(
+    notifications_router,
+    prefix=f"{settings.api_v1_str}/notifications",
+    tags=["Notifications"]
 )
 
 

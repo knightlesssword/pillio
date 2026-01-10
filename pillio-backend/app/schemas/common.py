@@ -88,6 +88,7 @@ class NotificationType(str, Enum):
     LOW_STOCK = "low_stock"
     PRESCRIPTION_EXPIRY = "prescription_expiry"
     REFILL = "refill"
+    ADHERENCE = "adherence"
     SYSTEM = "system"
 
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Bell, Check, X, Trash2 } from 'lucide-react';
+import { Bell, Check, X, Trash2, CheckCircle2, CircleSlash } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,18 +19,30 @@ const notificationIcons: Record<string, string> = {
   low_stock: '📦',
   prescription_expiry: '📋',
   refill: '🔄',
+  adherence: '📊',
   system: '⚙️',
+};
+
+// Check if notification type supports tick/cross actions
+const supportsAction = (type: string): boolean => {
+  return type === 'reminder';
 };
 
 function NotificationItem({
   notification,
   onMarkAsRead,
+  onMarkAsTaken,
+  onMarkAsSkipped,
   onRemove,
 }: {
   notification: Notification;
   onMarkAsRead: (id: string) => void;
+  onMarkAsTaken: (id: string) => void;
+  onMarkAsSkipped: (id: string) => void;
   onRemove: (id: string) => void;
 }) {
+  const canTakeAction = supportsAction(notification.type) && !notification.isRead;
+
   const content = (
     <motion.div
       initial={{ opacity: 0, y: -10 }}
@@ -54,20 +66,58 @@ function NotificationItem({
         </p>
       </div>
       <div className="flex items-center gap-1">
-        {!notification.isRead && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onMarkAsRead(notification.id);
-            }}
-          >
-            <Check className="h-3 w-3" />
-          </Button>
+        {canTakeAction ? (
+          <>
+            {/* Tick (✓) - Mark as taken */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-green-600 hover:text-green-700 hover:bg-green-50"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onMarkAsTaken(notification.id);
+              }}
+              title="Mark as taken"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+            </Button>
+            {/* Cross (✗) - Mark as skipped */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-50"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onMarkAsSkipped(notification.id);
+              }}
+              title="Mark as skipped"
+            >
+              <CircleSlash className="h-4 w-4" />
+            </Button>
+          </>
+        ) : (
+          <>
+            {/* Just mark as read for non-actionable notifications */}
+            {!notification.isRead && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onMarkAsRead(notification.id);
+                }}
+                title="Mark as read"
+              >
+                <Check className="h-3 w-3" />
+              </Button>
+            )}
+          </>
         )}
+        {/* Remove button */}
         <Button
           variant="ghost"
           size="icon"
@@ -77,6 +127,7 @@ function NotificationItem({
             e.stopPropagation();
             onRemove(notification.id);
           }}
+          title="Remove"
         >
           <X className="h-3 w-3" />
         </Button>
@@ -96,8 +147,16 @@ function NotificationItem({
 }
 
 export default function NotificationBell() {
-  const { notifications, unreadCount, markAsRead, markAllAsRead, removeNotification, clearAll } =
-    useNotifications();
+  const {
+    notifications,
+    unreadCount,
+    markAsRead,
+    markAllAsRead,
+    removeNotification,
+    clearAll,
+    markAsTaken,
+    markAsSkipped,
+  } = useNotifications();
 
   return (
     <Popover>
@@ -152,6 +211,8 @@ export default function NotificationBell() {
                     key={notification.id}
                     notification={notification}
                     onMarkAsRead={markAsRead}
+                    onMarkAsTaken={markAsTaken}
+                    onMarkAsSkipped={markAsSkipped}
                     onRemove={removeNotification}
                   />
                 ))}

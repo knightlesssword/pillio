@@ -194,7 +194,7 @@ export function toInventoryAdjustment(apiHistory: ApiInventoryHistory): Inventor
 // Notification types
 export interface Notification {
   id: string;
-  type: 'reminder' | 'low_stock' | 'prescription_expiry' | 'refill' | 'system';
+  type: 'reminder' | 'low_stock' | 'prescription_expiry' | 'refill' | 'adherence' | 'system';
   title: string;
   message: string;
   isRead: boolean;

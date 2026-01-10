@@ -1,27 +1,58 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import { format, formatDistanceToNow, isToday, isTomorrow, isYesterday, parseISO } from "date-fns"
+import { format, formatDistanceToNow, isToday, isTomorrow, isYesterday } from "date-fns"
+
+// Custom date parser that handles both ISO 8601 and PostgreSQL timestamp formats
+function parseDate(date: Date | string): Date {
+  if (date instanceof Date) return date;
+  if (!date) return new Date(NaN);
+  
+  // If already a valid ISO format with T and Z, Date constructor handles it
+  const parsed = new Date(date);
+  if (!isNaN(parsed.getTime())) return parsed;
+  
+  // Try replacing space with T for PostgreSQL format: "2026-01-10 17:25:31.014044"
+  const withT = date.replace(' ', 'T');
+  const parsedWithT = new Date(withT);
+  if (!isNaN(parsedWithT.getTime())) return parsedWithT;
+  
+  return new Date(NaN);
+}
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
 // Format date for display
-export function formatDate(date: Date | string, formatString: string = 'PPP'): string {
-  const parsedDate = typeof date === 'string' ? parseISO(date) : date;
+export function formatDate(date: Date | string | null | undefined, formatString: string = 'PPP'): string {
+  if (!date) return '';
+  const parsedDate = parseDate(date);
+  if (!parsedDate || isNaN(parsedDate.getTime())) return '';
   return format(parsedDate, formatString);
 }
 
 // Format time for display
-export function formatTime(date: Date | string): string {
-  const parsedDate = typeof date === 'string' ? parseISO(date) : date;
+export function formatTime(date: Date | string | null | undefined): string {
+  if (!date) return '';
+  const parsedDate = parseDate(date);
+  if (!parsedDate || isNaN(parsedDate.getTime())) return '';
   return format(parsedDate, 'h:mm a');
 }
 
 // Get relative date string
-export function getRelativeDate(date: Date | string): string {
-  const parsedDate = typeof date === 'string' ? parseISO(date) : date;
-  
+export function getRelativeDate(date: Date | string | null | undefined): string {
+  // Handle null/undefined/invalid dates
+  if (!date) {
+    return 'Unknown time';
+  }
+
+  const parsedDate = parseDate(date);
+
+  // Check if the parsed date is valid
+  if (!parsedDate || isNaN(parsedDate.getTime())) {
+    return 'Unknown time';
+  }
+
   if (isToday(parsedDate)) return 'Today';
   if (isTomorrow(parsedDate)) return 'Tomorrow';
   if (isYesterday(parsedDate)) return 'Yesterday';
@@ -105,6 +136,7 @@ export function formatPhoneNumber(phone: string): string {
 }
 
 // Debounce function
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function debounce<T extends (...args: any[]) => any>(
   func: T,
   wait: number
@@ -142,7 +174,7 @@ export function parseTimeString(timeString: string): Date {
 
 // Get days until date
 export function getDaysUntil(date: Date | string): number {
-  const parsedDate = typeof date === 'string' ? parseISO(date) : date;
+  const parsedDate = parseDate(date);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const targetDate = new Date(parsedDate);

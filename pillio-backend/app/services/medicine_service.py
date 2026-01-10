@@ -12,6 +12,7 @@ from app.core.exceptions import (
     MedicineNotFoundException, MedicineAlreadyExistsException,
     InsufficientStockException
 )
+from app.database import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -363,6 +364,17 @@ class MedicineService:
             )
             
             logger.info(f"Stock adjusted for medicine {medicine_id}: {old_stock} -> {new_stock}")
+            
+            # Trigger low stock notification check
+            try:
+                from app.services.notification_triggers import NotificationTriggers
+                async with AsyncSessionLocal() as trigger_db:
+                    triggers = NotificationTriggers(trigger_db)
+                    await triggers.check_and_notify_low_stock(user_id, medicine_id)
+                    await triggers.check_and_notify_refill(user_id, medicine_id)
+            except Exception as trigger_error:
+                logger.error(f"Error triggering low stock notification: {trigger_error}")
+            
             return medicine
             
         except SQLAlchemyError as e:

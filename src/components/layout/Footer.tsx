@@ -8,7 +8,7 @@ export default function Footer() {
       <div className="container mx-auto">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>© 2024 Pillio. Made with</span>
+            <span>© 2026 Pillio. Made with</span>
             <Heart className="h-4 w-4 text-accent fill-current" />
             <span>for your health</span>
           </div>
