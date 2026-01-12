@@ -5,6 +5,33 @@ import { toUser, type ApiUser } from '@/types';
 import authApi from '@/lib/auth-api';
 import { getErrorMessage } from '@/lib/api';
 
+// Helper functions for storage management
+const getStorage = (storageType: 'local' | 'session') => 
+  storageType === 'local' ? localStorage : sessionStorage;
+
+const getToken = (storageType: 'local' | 'session') => 
+  getStorage(storageType).getItem('auth_token');
+
+const setToken = (storageType: 'local' | 'session', token: string, refreshToken: string) => {
+  const storage = getStorage(storageType);
+  storage.setItem('auth_token', token);
+  storage.setItem('refresh_token', refreshToken);
+};
+
+const clearAuthData = (storageType: 'local' | 'session') => {
+  const storage = getStorage(storageType);
+  storage.removeItem('auth_token');
+  storage.removeItem('refresh_token');
+  storage.removeItem('user');
+};
+
+// Check which storage has valid auth data
+const getAuthStorageType = (): 'local' | 'session' | null => {
+  if (localStorage.getItem('auth_token')) return 'local';
+  if (sessionStorage.getItem('auth_token')) return 'session';
+  return null;
+};
+
 // eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const context = useContext(AuthContext);
@@ -19,8 +46,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   // Refresh user data from API
-  const refreshUser = useCallback(async () => {
-    const token = localStorage.getItem('auth_token');
+  const refreshUser = useCallback(async (storageType: 'local' | 'session' = 'local') => {
+    const token = getStorage(storageType).getItem('auth_token');
     if (!token) {
       setIsLoading(false);
       return;
@@ -30,13 +57,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await authApi.getMe();
       const userData = toUser(response.data);
       setUser(userData);
-      localStorage.setItem('user', JSON.stringify(userData));
+      getStorage(storageType).setItem('user', JSON.stringify(userData));
     } catch (error) {
       console.error('Failed to refresh user:', error);
-      // Token might be invalid, clear auth data
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('refresh_token');
-      localStorage.removeItem('user');
+      // Token might be invalid, clear auth data from the correct storage
+      clearAuthData(storageType);
       setUser(null);
     } finally {
       setIsLoading(false);
@@ -46,9 +71,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Check for existing auth token on mount
   useEffect(() => {
     const checkAuth = async () => {
-      const token = localStorage.getItem('auth_token');
-      if (token) {
-        await refreshUser();
+      const storageType = getAuthStorageType();
+      if (storageType) {
+        await refreshUser(storageType);
       } else {
         setIsLoading(false);
       }
@@ -63,20 +88,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await authApi.login({
         email: data.email,
         password: data.password,
+        remember_me: data.rememberMe,
       });
 
       const { access_token, refresh_token } = response.data;
       
-      // Store tokens
-      localStorage.setItem('auth_token', access_token);
-      localStorage.setItem('refresh_token', refresh_token);
+      // Store tokens in localStorage (remember me) or sessionStorage (session only)
+      const storageType = data.rememberMe ? 'local' : 'session';
+      setToken(storageType, access_token, refresh_token);
 
       // Fetch user profile
       const userResponse = await authApi.getMe();
       const userData = toUser(userResponse.data);
       
       setUser(userData);
-      localStorage.setItem('user', JSON.stringify(userData));
+      getStorage(storageType).setItem('user', JSON.stringify(userData));
     } catch (error) {
       const message = getErrorMessage(error);
       throw new Error(message);
@@ -97,16 +123,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const { access_token, refresh_token } = response.data;
       
-      // Store tokens
-      localStorage.setItem('auth_token', access_token);
-      localStorage.setItem('refresh_token', refresh_token);
+      // Store tokens in sessionStorage by default for registration
+      setToken('session', access_token, refresh_token);
 
       // Fetch user profile
       const userResponse = await authApi.getMe();
       const userData = toUser(userResponse.data);
       
       setUser(userData);
-      localStorage.setItem('user', JSON.stringify(userData));
+      sessionStorage.setItem('user', JSON.stringify(userData));
     } catch (error) {
       const message = getErrorMessage(error);
       throw new Error(message);
@@ -123,9 +148,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('Logout error:', error);
     } finally {
       setUser(null);
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('refresh_token');
-      localStorage.removeItem('user');
+      // Clear auth data from both storage types
+      clearAuthData('local');
+      clearAuthData('session');
     }
   };
 
