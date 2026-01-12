@@ -25,6 +25,10 @@ This application is designed for **personal medication tracking and inventory ma
 **By using this application, you acknowledge that you understand and accept this disclaimer.**
 
 
+## Screenshot
+<img width="1893" height="966" alt="image" src="https://github.com/user-attachments/assets/4a26a680-8329-479c-af25-d9eb7dff0055" />
+
+
 ## Features
 
 ### Core Features
